@@ -12,9 +12,18 @@ fn app(cx: Scope) -> Element {
 
     cx.render(match x.value() {
         Some(Ok(val)) => rsx!(
-            NavBar {},
-            HeaderComponent {
-                val: val.to_string()
+            div{
+                class: "container",
+                NavBar {},
+                div{
+                    class: "columns",
+                    PanelComponent {
+                        val: val.to_string()
+                    }
+                    PanelComponent {
+                        val: "static value".to_string()
+                    }
+                }
             }
         ),
         Some(Err(_)) => rsx!("Failed to call api"),
@@ -22,24 +31,29 @@ fn app(cx: Scope) -> Element {
     })
 }
 
-#[derive(Props, PartialEq)]
-struct HeaderComponentProps {
-    val: String,
-}
-
 #[allow(non_snake_case)]
-fn HeaderComponent(cx: Scope<HeaderComponentProps>) -> Element {
+#[inline_props]
+fn PanelComponent(cx: Scope, val: String) -> Element {
     cx.render(rsx! {
         div{
-            article {
-                class: "mw7 center ph3 ph5-ns tc br2 pv5 bg-washed-yellow dark-blue mb5",
-                h1{
-                    class: "fw6 f3 f2-ns lh-title mt0 mb3",
-                    "Retrieved value: {cx.props.val}"
+            class: "col-6 col-xs-12",
+            div{
+                class: "panel",
+                div{
+                    class: "panel-header text-center",
+                    div{
+                        class: "panel-title h3",
+                        "This is a panel title"
+                    }
                 }
-                h2 {
-                    class: "fw2 f4 lh-copy mt0 mb3",
-                    "This a sub header"
+                div{
+                    class: "panel-body",
+                    h4{
+                        "This is a header"
+                    }
+                    p {
+                        "Retrieved value: {val}"
+                    }
                 }
             }
         }
@@ -50,18 +64,19 @@ fn HeaderComponent(cx: Scope<HeaderComponentProps>) -> Element {
 #[inline_props]
 fn NavBar(cx: Scope) -> Element {
     let nav_items = vec!["home", "about"].into_iter().map(|x| {
-        rsx!(a {
-            class: "link dim white dib mr3",
-            title: "{x}",
-            href: "#",
-            "{x}"
-        })
+        rsx!(
+            a {
+                    class: "btn btn-link",
+                    href: "#",
+                    "{x}"
+            }
+        )
     });
     cx.render(rsx! {
         header{
-            class: "bg-black-90 fixed w-100 ph3 pv3 pv4-ns ph4-m ph5-l",
-            nav{
-                class: "f6 fw6 ttu tracked",
+            class: "navbar",
+            section{
+                class: "navbar-section",
                 nav_items
             }
         }
