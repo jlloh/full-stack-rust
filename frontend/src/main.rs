@@ -11,9 +11,12 @@ fn app(cx: Scope) -> Element {
     });
 
     cx.render(match x.value() {
-        Some(Ok(val)) => rsx!(HeaderComponent {
-            val: val.to_string()
-        }),
+        Some(Ok(val)) => rsx!(
+            NavBar {},
+            HeaderComponent {
+                val: val.to_string()
+            }
+        ),
         Some(Err(_)) => rsx!("Failed to call api"),
         None => rsx!("Loading api"),
     })
@@ -38,6 +41,28 @@ fn HeaderComponent(cx: Scope<HeaderComponentProps>) -> Element {
                     class: "fw2 f4 lh-copy mt0 mb3",
                     "This a sub header"
                 }
+            }
+        }
+    })
+}
+
+#[allow(non_snake_case)]
+#[inline_props]
+fn NavBar(cx: Scope) -> Element {
+    let nav_items = vec!["home", "about"].into_iter().map(|x| {
+        rsx!(a {
+            class: "link dim white dib mr3",
+            title: "{x}",
+            href: "#",
+            "{x}"
+        })
+    });
+    cx.render(rsx! {
+        header{
+            class: "bg-black-90 fixed w-100 ph3 pv3 pv4-ns ph4-m ph5-l",
+            nav{
+                class: "f6 fw6 ttu tracked",
+                nav_items
             }
         }
     })
