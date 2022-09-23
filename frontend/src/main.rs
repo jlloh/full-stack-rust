@@ -66,9 +66,9 @@ fn NavBar(cx: Scope) -> Element {
     let nav_items = vec!["home", "about"].into_iter().map(|x| {
         rsx!(
             a {
-                    class: "btn btn-link",
-                    href: "#",
-                    "{x}"
+                class: "btn btn-link",
+                href: "#",
+                "{x}"
             }
         )
     });
@@ -79,13 +79,24 @@ fn NavBar(cx: Scope) -> Element {
             "Logo",
         }
     );
+    let nav_login = rsx!(
+        a {
+            class: "btn btn-primary",
+            href: "/api/login",
+            "Login",
+        }
+    );
     cx.render(rsx! {
         header {
             class: "navbar",
-            section{
+            section {
                 class: "navbar-section",
                 nav_logo
                 nav_items
+            }
+            section {
+                class: "navbar-section",
+                nav_login
             }
         }
     })
