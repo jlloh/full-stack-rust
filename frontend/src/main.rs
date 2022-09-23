@@ -6,19 +6,24 @@ fn main() {
 }
 
 fn app(cx: Scope) -> Element {
-    let x = use_future(&cx, (), |_| async move {
-        Request::get("/hello").send().await.unwrap().text().await
+    let user_info = use_future(&cx, (), |_| async move {
+        Request::get("/api/get_user_info")
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
     });
 
-    cx.render(match x.value() {
-        Some(Ok(val)) => rsx!(
+    cx.render(match user_info.value() {
+        Some(Ok(user_info)) => rsx!(
             div {
                 class: "container",
-                NavBar {},
+                NavBar {user_info: user_info.to_string()},
                 div {
                     class: "columns",
                     PanelComponent {
-                        val: val.to_string()
+                        val: user_info.to_string()
                     }
                     PanelComponent {
                         val: "static value".to_string()
@@ -60,9 +65,19 @@ fn PanelComponent(cx: Scope, val: String) -> Element {
     })
 }
 
+/// Checked whether email is a valid email
+fn is_logged_in(user_info: String) -> bool {
+    vec!["anonymous", "unknown"]
+        .into_iter()
+        .filter(|x| *x == user_info)
+        .count()
+        == 0
+}
+
 #[allow(non_snake_case)]
 #[inline_props]
-fn NavBar(cx: Scope) -> Element {
+fn NavBar(cx: Scope, user_info: String) -> Element {
+    let logged_in = is_logged_in(user_info.to_string());
     let nav_items = vec!["home", "about"].into_iter().map(|x| {
         rsx!(
             a {
@@ -79,13 +94,21 @@ fn NavBar(cx: Scope) -> Element {
             "Logo",
         }
     );
-    let nav_login = rsx!(
-        a {
-            class: "btn btn-primary",
-            href: "/api/login",
-            "Login",
-        }
-    );
+    let nav_login = if !logged_in {
+        rsx!(
+            a {
+                class: "btn btn-primary",
+                href: "/api/trigger_login",
+                "Login",
+            }
+        )
+    } else {
+        rsx!(a {
+            class: "btn btn-secondary",
+            href: "#",
+            "User: {user_info}",
+        })
+    };
     cx.render(rsx! {
         header {
             class: "navbar",

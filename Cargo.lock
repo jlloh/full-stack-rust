@@ -1739,6 +1739,7 @@ dependencies = [
  "env_logger",
  "log",
  "openidconnect",
+ "serde",
  "uuid",
 ]
 
