@@ -12,10 +12,10 @@ fn app(cx: Scope) -> Element {
 
     cx.render(match x.value() {
         Some(Ok(val)) => rsx!(
-            div{
+            div {
                 class: "container",
                 NavBar {},
-                div{
+                div {
                     class: "columns",
                     PanelComponent {
                         val: val.to_string()
@@ -35,20 +35,20 @@ fn app(cx: Scope) -> Element {
 #[inline_props]
 fn PanelComponent(cx: Scope, val: String) -> Element {
     cx.render(rsx! {
-        div{
+        div {
             class: "col-6 col-xs-12",
-            div{
+            div {
                 class: "panel",
-                div{
+                div {
                     class: "panel-header text-center",
-                    div{
+                    div {
                         class: "panel-title h3",
                         "This is a panel title"
                     }
                 }
-                div{
+                div {
                     class: "panel-body",
-                    h4{
+                    h4 {
                         "This is a header"
                     }
                     p {
@@ -72,11 +72,19 @@ fn NavBar(cx: Scope) -> Element {
             }
         )
     });
+    let nav_logo = rsx!(
+        a {
+            class: "navbar-brand mr-2",
+            href: "#",
+            "Logo",
+        }
+    );
     cx.render(rsx! {
-        header{
+        header {
             class: "navbar",
             section{
                 class: "navbar-section",
+                nav_logo
                 nav_items
             }
         }
