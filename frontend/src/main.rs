@@ -16,21 +16,26 @@ fn app(cx: Scope) -> Element {
     });
 
     cx.render(match user_info.value() {
-        Some(Ok(user_info)) => rsx!(
-            div {
-                class: "container",
-                NavBar {user_info: user_info.to_string()},
+        Some(Ok(user_info)) =>
+        // let logged_in = is_logged_in(user_info.to_string());
+        {
+            let logged_in = is_logged_in(user_info.to_string());
+            rsx!(
                 div {
-                    class: "columns",
-                    PanelComponent {
-                        val: user_info.to_string()
-                    }
-                    PanelComponent {
-                        val: "static value".to_string()
+                    class: "container",
+                    NavBar {user_info: user_info.to_string(), logged_in: logged_in}
+                    div {
+                        class: "columns",
+                        PanelComponent {
+                            val: user_info.to_string()
+                        }
+                        PanelComponent {
+                            val: "static value".to_string()
+                        }
                     }
                 }
-            }
-        ),
+            )
+        }
         Some(Err(_)) => rsx!("Failed to call api"),
         None => rsx!("Loading api"),
     })
@@ -76,8 +81,8 @@ fn is_logged_in(user_info: String) -> bool {
 
 #[allow(non_snake_case)]
 #[inline_props]
-fn NavBar(cx: Scope, user_info: String) -> Element {
-    let logged_in = is_logged_in(user_info.to_string());
+fn NavBar(cx: Scope, user_info: String, logged_in: bool) -> Element {
+    // let logged_in = is_logged_in(user_info.to_string());
     let nav_items = vec!["home", "about"].into_iter().map(|x| {
         rsx!(
             a {
@@ -103,10 +108,26 @@ fn NavBar(cx: Scope, user_info: String) -> Element {
             }
         )
     } else {
-        rsx!(a {
-            class: "btn btn-secondary",
-            href: "#",
-            "User: {user_info}",
+        rsx!(div {
+            class: "dropdown",
+            a {
+                class: "btn btn-link dropdown-toggle",
+                href: "#",
+                "User: {user_info}"
+                i {
+                    class: "icon icon-caret"
+                }
+            }
+            ul {
+                class: "menu",
+                li {
+                    class: "menu-item",
+                    a {
+                        href: "/api/trigger_logout",
+                        "Logout"
+                    }
+                }
+            }
         })
     };
     cx.render(rsx! {

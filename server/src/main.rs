@@ -62,6 +62,7 @@ pub fn start_webserver() -> actix_web::dev::Server {
             .service(login)
             .service(token_exchange)
             .service(get_user_info)
+            .service(logout)
             .service(fs::Files::new("/", "./dist").index_file("index.html"))
     });
 
@@ -269,4 +270,16 @@ async fn get_oidc_login() -> (Url, CsrfToken, Nonce) {
         .url();
 
     (authorize_url, csrf_state, nonce)
+}
+
+#[get("/api/trigger_logout")]
+async fn logout(session: Session) -> ActixResult<HttpResponse> {
+    // if user already logged in, we clear his session token
+    let user_key = "user";
+    if (session.get::<String>(user_key)?).is_some() {
+        session.remove(user_key);
+    }
+    Ok(HttpResponse::TemporaryRedirect()
+        .insert_header(("Location", "/"))
+        .body("Logged out. Redirecting"))
 }
