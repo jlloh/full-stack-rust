@@ -1,6 +1,6 @@
 use actix_files as fs;
 use actix_session::{storage::CookieSessionStore, Session, SessionMiddleware};
-use actix_web::error::ErrorInternalServerError;
+use actix_web::error::{ErrorForbidden, ErrorInternalServerError};
 use actix_web::{
     cookie::Key,
     get,
@@ -70,21 +70,46 @@ pub fn start_webserver() -> actix_web::dev::Server {
 }
 
 #[get("/api/hello")]
-async fn hello(session: Session) -> String {
-    info!("Session has: {:#?}", session.entries());
-    "hello there".to_string()
+async fn hello(session: Session) -> ActixResult<String> {
+    if !is_authorised(session)? {
+        return Err(ErrorForbidden("Unauthorised"));
+    }
+    Ok("hello there".to_string())
 }
 
 #[get("/api/get_user_info")]
 async fn get_user_info(session: Session) -> ActixResult<String> {
-    if let Some(email) = session.get::<String>("user")? {
-        if !email.is_empty() {
-            Ok(email)
-        } else {
-            Ok("unknown".to_string())
-        }
+    let user = get_user_from_session_cookie(session);
+    if let Ok(Some(email)) = user {
+        Ok(email)
     } else {
         Ok("anonymous".to_string())
+    }
+}
+
+fn get_user_from_session_cookie(session: Session) -> AnyhowResult<Option<String>> {
+    if let Some(email) = session.get::<String>("user")? {
+        if !email.is_empty() {
+            Ok(Some(email))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+fn is_authorised(session: Session) -> ActixResult<bool> {
+    let user = get_user_from_session_cookie(session);
+    let result = match user {
+        Ok(inside) => inside,
+        Err(e) => return Err(ErrorInternalServerError(e.to_string())),
+    };
+    if let Some(_user) = result {
+        // check if user in a whitelist?
+        Ok(true)
+    } else {
+        Ok(false)
     }
 }
 
@@ -103,7 +128,7 @@ async fn login(app_state: web::Data<AppState>, session: Session) -> ActixResult<
 
     let anonuser = "anonuser";
     let anonuserid = if let Some(anonuserid) = session.get::<String>(anonuser)? {
-        info!("Anonymous user already has a session_id: {}", anonuserid);
+        // info!("Anonymous user already has a session_id: {}", anonuserid);
         anonuserid
     } else {
         info!("Anonymous user does NOT have a session_id. Generating one for him");
@@ -134,7 +159,7 @@ async fn token_exchange(
     app_state: web::Data<AppState>,
     session: Session,
 ) -> ActixResult<HttpResponse> {
-    info!("api/token_exchange has: {:#?}", session.entries());
+    // info!("api/token_exchange has: {:#?}", session.entries());
     match token_exchange_internal(req_body, app_state, session).await {
         Ok(value) => Ok(value),
         Err(e) => Err(ErrorInternalServerError(e.to_string())),
@@ -146,7 +171,7 @@ async fn token_exchange_internal(
     app_state: web::Data<AppState>,
     session: Session,
 ) -> AnyhowResult<HttpResponse> {
-    info!("Session has: {:#?}", session.entries());
+    // info!("Session has: {:#?}", session.entries());
     let anonuser = "anonuser";
     let anonuserid = if let Some(uuid) = session.get::<String>(anonuser)? {
         Ok(uuid)
