@@ -32,6 +32,7 @@ async fn main() -> Result<()> {
 /// Store a mutex of hashmap to persist csrftoken and nonce
 pub struct AppState {
     pub session_oidc_state: Mutex<HashMap<String, (CsrfToken, Nonce)>>,
+    pub session_mappings: Mutex<HashMap<String, String>>,
 }
 
 pub fn start_webserver() -> actix_web::dev::Server {
@@ -46,6 +47,7 @@ pub fn start_webserver() -> actix_web::dev::Server {
 
     let app_state = Data::new(AppState {
         session_oidc_state: Mutex::new(HashMap::<String, (CsrfToken, Nonce)>::new()),
+        session_mappings: Mutex::new(HashMap::<String, String>::new()),
     });
 
     let server = HttpServer::new(move || {
@@ -70,14 +72,14 @@ pub fn start_webserver() -> actix_web::dev::Server {
 }
 
 #[get("/api/hello")]
-async fn hello(session: Session) -> ActixResult<String> {
-    let user = is_authorised(session)?;
+async fn hello(session: Session, app_state: web::Data<AppState>) -> ActixResult<String> {
+    let user = is_authorised(session, app_state)?;
     Ok(format!("hello there {}", user))
 }
 
 #[get("/api/get_user_info")]
-async fn get_user_info(session: Session) -> ActixResult<String> {
-    let user = get_user_from_session_cookie(session);
+async fn get_user_info(session: Session, app_state: web::Data<AppState>) -> ActixResult<String> {
+    let user = get_user_from_session_cookie(session, app_state);
     if let Ok(Some(email)) = user {
         Ok(email)
     } else {
@@ -85,10 +87,22 @@ async fn get_user_info(session: Session) -> ActixResult<String> {
     }
 }
 
-fn get_user_from_session_cookie(session: Session) -> AnyhowResult<Option<String>> {
-    if let Some(email) = session.get::<String>("user")? {
-        if !email.is_empty() {
-            Ok(Some(email))
+fn get_user_from_session_cookie(
+    session: Session,
+    app_state: web::Data<AppState>,
+) -> AnyhowResult<Option<String>> {
+    if let Some(session_id) = session.get::<String>("authedsession")? {
+        if !session_id.is_empty() {
+            let session_map = app_state
+                .session_mappings
+                .lock()
+                .expect("Expected to be able to lock mutex");
+            if let Some(email) = (*session_map).get(&session_id) {
+                Ok(Some(email.to_string()))
+            } else {
+                Ok(None)
+            }
+            // Ok(Some(email))
         } else {
             Ok(None)
         }
@@ -97,8 +111,8 @@ fn get_user_from_session_cookie(session: Session) -> AnyhowResult<Option<String>
     }
 }
 
-fn is_authorised(session: Session) -> ActixResult<String> {
-    let user = get_user_from_session_cookie(session);
+fn is_authorised(session: Session, app_state: web::Data<AppState>) -> ActixResult<String> {
+    let user = get_user_from_session_cookie(session, app_state);
     let result = match user {
         Ok(inside) => inside,
         Err(e) => return Err(ErrorInternalServerError(e.to_string())),
@@ -116,12 +130,10 @@ fn is_authorised(session: Session) -> ActixResult<String> {
 #[get("/api/trigger_login")]
 async fn login(app_state: web::Data<AppState>, session: Session) -> ActixResult<HttpResponse> {
     // if user already logged in, we skip this flow
-    if let Some(email) = session.get::<String>("user")? {
-        if !email.is_empty() {
-            return Ok(HttpResponse::TemporaryRedirect()
-                .insert_header(("Location", "/"))
-                .body("Already logged in. Redirecting"));
-        }
+    if is_authorised(session.clone(), app_state.clone()).is_ok() {
+        return Ok(HttpResponse::TemporaryRedirect()
+            .insert_header(("Location", "/"))
+            .body("Already logged in. Redirecting"));
     }
 
     let anonuser = "anonuser";
@@ -228,9 +240,17 @@ async fn token_exchange_internal(
         Err(anyhow!("No email found in claims"))
     }?;
 
-    // clean up both cookie and internal state
+    let mut session_mappings = app_state
+        .session_mappings
+        .lock()
+        .expect("Expected to be able to lock mutex for session mappings");
+
+    // clean up both cookie and internal state. generate new uuid for auth-ed user
     (*session_oidc_state).remove(&anonuserid);
-    session.insert("user", email)?;
+    // session.insert("user", email)?;
+    let session_id = Uuid::new_v4().to_string();
+    session.insert("authedsession", session_id.clone())?;
+    (*session_mappings).insert(session_id, email.to_string());
     session.remove(anonuser);
 
     // redirect
@@ -298,7 +318,7 @@ async fn get_oidc_login() -> (Url, CsrfToken, Nonce) {
 #[get("/api/trigger_logout")]
 async fn logout(session: Session) -> ActixResult<HttpResponse> {
     // if user already logged in, we clear his session token
-    let user_key = "user";
+    let user_key = "authedsession";
     if (session.get::<String>(user_key)?).is_some() {
         session.remove(user_key);
     }
