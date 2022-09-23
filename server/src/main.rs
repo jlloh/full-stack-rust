@@ -71,10 +71,8 @@ pub fn start_webserver() -> actix_web::dev::Server {
 
 #[get("/api/hello")]
 async fn hello(session: Session) -> ActixResult<String> {
-    if !is_authorised(session)? {
-        return Err(ErrorForbidden("Unauthorised"));
-    }
-    Ok("hello there".to_string())
+    let user = is_authorised(session)?;
+    Ok(format!("hello there {}", user))
 }
 
 #[get("/api/get_user_info")]
@@ -99,17 +97,17 @@ fn get_user_from_session_cookie(session: Session) -> AnyhowResult<Option<String>
     }
 }
 
-fn is_authorised(session: Session) -> ActixResult<bool> {
+fn is_authorised(session: Session) -> ActixResult<String> {
     let user = get_user_from_session_cookie(session);
     let result = match user {
         Ok(inside) => inside,
         Err(e) => return Err(ErrorInternalServerError(e.to_string())),
     };
-    if let Some(_user) = result {
+    if let Some(user) = result {
         // check if user in a whitelist?
-        Ok(true)
+        Ok(user)
     } else {
-        Ok(false)
+        Err(ErrorForbidden("Unauthorised"))
     }
 }
 
