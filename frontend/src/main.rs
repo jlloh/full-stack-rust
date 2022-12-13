@@ -22,17 +22,38 @@ fn app(cx: Scope) -> Element {
             let logged_in = is_logged_in(user_info.to_string());
             rsx!(
                 div {
-                    class: "container",
+                    // class: "container",
                     NavBar {user_info: user_info.to_string(), logged_in: logged_in}
                     div {
+                        class: "container",
+                    div {
                         class: "columns",
-                        PanelComponent {
-                            val: user_info.to_string()
+                        div {
+                            class: "column",
+                            button {
+                                class: "button is-success",
+                                "test button"
+                            }
                         }
-                        PanelComponent {
-                            val: "static value".to_string()
+                        div {
+                            class: "column",
+                            div {
+                                class: "box",
+                                "This is a box element"
+                            }
                         }
                     }
+
+                    // div {
+                    //     class: "columns",
+                    //     PanelComponent {
+                    //         val: user_info.to_string()
+                    //     }
+                    //     PanelComponent {
+                    //         val: "static value".to_string()
+                    //     }
+                    // }
+                }
                 }
             )
         }
@@ -102,44 +123,50 @@ fn NavBar(cx: Scope, user_info: String, logged_in: bool) -> Element {
     let nav_login = if !logged_in {
         rsx!(
             a {
-                class: "btn btn-primary",
+                class: "button is-primary",
                 href: "/api/trigger_login",
                 "Login",
             }
         )
     } else {
         rsx!(div {
-            class: "dropdown",
+            class: "navbar-item has-dropdown is-hoverable",
             a {
-                class: "btn btn-link dropdown-toggle",
+                class: "navbar-link",
                 href: "#",
                 "User: {user_info}"
-                i {
-                    class: "icon icon-caret"
-                }
+                // i {
+                //     class: "icon icon-caret"
+                // }
             }
-            ul {
-                class: "menu",
-                li {
-                    class: "menu-item",
+            div {
+                class: "navbar-dropdown",
                     a {
+                        class: "navbar-item",
                         href: "/api/trigger_logout",
                         "Logout"
                     }
-                }
             }
         })
     };
     cx.render(rsx! {
-        header {
+        nav {
             class: "navbar",
-            section {
-                class: "navbar-section",
-                nav_logo
-                nav_items
+            role: "navigation",
+            // aria-label: "main",
+            div {
+                class: "navbar-brand",
+                a {
+                    class: "navbar-item",
+                    href: "#",
+                    img {
+                        src: "https://bulma.io/images/bulma-logo.png"
+                    }
+                }
             }
-            section {
-                class: "navbar-section",
+
+            div {
+                class: "navbar-end",
                 nav_login
             }
         }
