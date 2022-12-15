@@ -762,7 +762,6 @@ dependencies = [
  "dioxus",
  "gloo-net",
  "sycamore",
- "wasm-bindgen-futures",
 ]
 
 [[package]]
