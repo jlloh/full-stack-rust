@@ -1,35 +1,46 @@
 use gloo_net::http::Request;
+use gloo_net::Error;
 use sycamore::futures::*;
 use sycamore::prelude::*;
+// use sycamore::suspense::Suspense;
 
 fn main() {
     sycamore::render(|cx| {
-        let username = create_signal(cx, "unknown".to_string());
+        let anonymous_user = "anonymous".to_string();
+        let username = create_signal(cx, anonymous_user.clone());
         let is_logged_in = create_selector(cx, || is_logged_in(username.get().to_string()));
-        //TODO: Move this into it's own function and don't inline this
         spawn_local_scoped(cx, async move {
-            let user_info = Request::get("/api/get_user_info")
-                .send()
-                .await
-                .unwrap()
-                .text()
-                .await;
+            let user_info = get_string_response("/api/get_user_info").await;
             if let Ok(x) = user_info {
                 username.set(x)
             } else {
-                username.set("unknown".to_string())
+                username.set(anonymous_user)
             };
+        });
+        // create effect to retrieve something if he's logged in?
+        let text = create_signal(cx, "".to_string());
+        spawn_local_scoped(cx, async move {
+            let result = get_string_response("api/hello").await;
+            if let Ok(x) = result {
+                text.set(x)
+            } else {
+                text.set(format!("{:?}", result))
+            }
         });
         view! {
             cx,
             div(){
                 NavBar(username=username, is_logged_in=is_logged_in)
                 div(class="container is-widescreen"){
-                    MainBody()
+                    MainBody(text=text)
                 }
             }
         }
     })
+}
+
+async fn get_string_response(url: &str) -> Result<String, Error> {
+    Request::get(url).send().await.unwrap().text().await
 }
 
 #[derive(Prop)]
@@ -44,7 +55,6 @@ fn NavBar<'navbar, G: Html>(cx: Scope<'navbar>, props: NavBarProps<'navbar>) -> 
         nav(class="navbar",role="navigation"){
             div(class="navbar-brand"){
                 a(class="navbar-item", href="#"){
-                    // img(src="https://bulma.io/images/bulma-logo.png")
                     img(src="./rust_logo.png")
                 }
             }
@@ -87,8 +97,13 @@ fn is_logged_in(user_info: String) -> bool {
         == 0
 }
 
+#[derive(Prop)]
+struct MainBodyProps<'mainbody> {
+    text: &'mainbody Signal<String>,
+}
+
 #[component]
-fn MainBody<G: Html>(cx: Scope) -> View<G> {
+fn MainBody<'mainbody, G: Html>(cx: Scope<'mainbody>, props: MainBodyProps<'mainbody>) -> View<G> {
     view! {cx,
         section(class="hero is-primary"){
             div(class="hero-body"){
@@ -100,5 +115,12 @@ fn MainBody<G: Html>(cx: Scope) -> View<G> {
                 }
             }
         }
+        div(class="box"){(*props.text.get())}
     }
 }
+
+// #[component]
+// async fn AsyncComponent<'asynccomponent, G: Html>(cx: Scope<'asynccomponent>) -> View<G> {
+//     view! {cx,
+//     }
+// }
