@@ -1,9 +1,11 @@
 ## Introduction
-Example full stack Rust project, using actix-web and dioxus and bulma-css.
+Example full stack Rust project, using actix-web and Sycamore and bulma-css. (Initially was using dioxus but switched to sycamore to test out the api)
 
 Adapted from https://robert.kra.hn/posts/2022-04-03_rust-web-wasm/.
 
 Attempts to implement BFF (backend for frontend) pattern for login using oidc. Inspired by Duendesoftware's implementation.
+
+![example](./screenshot.png "Example Screenshot")
 
 ### Prerequisites
 1. Set up google oidc client at https://console.cloud.google.com/apis/credentials
