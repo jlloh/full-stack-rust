@@ -1,94 +1,91 @@
-use dioxus::prelude::*;
 use gloo_net::http::Request;
+use gloo_net::Error;
+use sycamore::futures::*;
+use sycamore::prelude::*;
+// use sycamore::suspense::Suspense;
 
 fn main() {
-    dioxus::web::launch(app);
-}
-
-fn app(cx: Scope) -> Element {
-    let user_info = use_future(&cx, (), |_| async move {
-        Request::get("/api/get_user_info")
-            .send()
-            .await
-            .unwrap()
-            .text()
-            .await
-    });
-
-    cx.render(match user_info.value() {
-        Some(Ok(user_info)) =>
-        // let logged_in = is_logged_in(user_info.to_string());
-        {
-            let logged_in = is_logged_in(user_info.to_string());
-            rsx!(
-                div {
-                    // class: "container",
-                    NavBar {user_info: user_info.to_string(), logged_in: logged_in}
-                    div {
-                        class: "container",
-                    div {
-                        class: "columns",
-                        div {
-                            class: "column",
-                            button {
-                                class: "button is-success",
-                                "test button"
-                            }
-                        }
-                        div {
-                            class: "column",
-                            div {
-                                class: "box",
-                                "This is a box element"
-                            }
-                        }
-                    }
-
-                    // div {
-                    //     class: "columns",
-                    //     PanelComponent {
-                    //         val: user_info.to_string()
-                    //     }
-                    //     PanelComponent {
-                    //         val: "static value".to_string()
-                    //     }
-                    // }
-                }
-                }
-            )
-        }
-        Some(Err(_)) => rsx!("Failed to call api"),
-        None => rsx!("Loading api"),
-    })
-}
-
-#[allow(non_snake_case)]
-#[inline_props]
-fn PanelComponent(cx: Scope, val: String) -> Element {
-    cx.render(rsx! {
-        div {
-            class: "col-6 col-xs-12",
-            div {
-                class: "panel",
-                div {
-                    class: "panel-header text-center",
-                    div {
-                        class: "panel-title h3",
-                        "This is a panel title"
-                    }
-                }
-                div {
-                    class: "panel-body",
-                    h4 {
-                        "This is a header"
-                    }
-                    p {
-                        "Retrieved value: {val}"
-                    }
+    sycamore::render(|cx| {
+        let anonymous_user = "anonymous".to_string();
+        let username = create_signal(cx, anonymous_user.clone());
+        let is_logged_in = create_selector(cx, || is_logged_in(username.get().to_string()));
+        spawn_local_scoped(cx, async move {
+            let user_info = get_string_response("/api/get_user_info").await;
+            if let Ok(x) = user_info {
+                username.set(x)
+            } else {
+                username.set(anonymous_user)
+            };
+        });
+        // create effect to retrieve something if he's logged in?
+        let text = create_signal(cx, "".to_string());
+        spawn_local_scoped(cx, async move {
+            let result = get_string_response("api/hello").await;
+            if let Ok(x) = result {
+                text.set(x)
+            } else {
+                text.set(format!("{:?}", result))
+            }
+        });
+        view! {
+            cx,
+            div(){
+                NavBar(username=username, is_logged_in=is_logged_in)
+                div(class="container is-widescreen"){
+                    MainBody(text=text)
                 }
             }
         }
     })
+}
+
+async fn get_string_response(url: &str) -> Result<String, Error> {
+    Request::get(url).send().await.unwrap().text().await
+}
+
+#[derive(Prop)]
+struct NavBarProps<'navbar> {
+    username: &'navbar Signal<String>,
+    is_logged_in: &'navbar ReadSignal<bool>,
+}
+
+#[component]
+fn NavBar<'navbar, G: Html>(cx: Scope<'navbar>, props: NavBarProps<'navbar>) -> View<G> {
+    view! {cx,
+        nav(class="navbar",role="navigation"){
+            div(class="navbar-brand"){
+                a(class="navbar-item", href="#"){
+                    img(src="./rust_logo.png")
+                }
+            }
+            NavBarEndMenu(username=props.username, is_logged_in=props.is_logged_in)
+        }
+    }
+}
+
+#[component]
+fn NavBarEndMenu<'navbar, G: Html>(cx: Scope<'navbar>, props: NavBarProps<'navbar>) -> View<G> {
+    view! {cx,
+        div(class="navbar-end"){
+            (if *props.is_logged_in.get() {
+                view! {cx,
+                div(class="navbar-item has-dropdown is-hoverable"){
+                    a(class="navbar-link", href="#"){
+                        "User:" (*props.username.get())
+                    }
+                    div(class="navbar-dropdown"){
+                        a(class="navbar-item", href="/api/trigger_logout"){
+                            "Logout"
+                        }
+                    }
+                }}
+            } else {
+                view! {cx,
+                    a(class="button is-primary", href="/api/trigger_login"){"Login"}
+                }
+            })
+        }
+    }
 }
 
 /// Checked whether email is a valid email
@@ -100,75 +97,30 @@ fn is_logged_in(user_info: String) -> bool {
         == 0
 }
 
-#[allow(non_snake_case)]
-#[inline_props]
-fn NavBar(cx: Scope, user_info: String, logged_in: bool) -> Element {
-    // let logged_in = is_logged_in(user_info.to_string());
-    let nav_items = vec!["home", "about"].into_iter().map(|x| {
-        rsx!(
-            a {
-                class: "btn btn-link",
-                href: "#",
-                "{x}"
-            }
-        )
-    });
-    let nav_logo = rsx!(
-        a {
-            class: "navbar-brand mr-2",
-            href: "#",
-            "Logo",
-        }
-    );
-    let nav_login = if !logged_in {
-        rsx!(
-            a {
-                class: "button is-primary",
-                href: "/api/trigger_login",
-                "Login",
-            }
-        )
-    } else {
-        rsx!(div {
-            class: "navbar-item has-dropdown is-hoverable",
-            a {
-                class: "navbar-link",
-                href: "#",
-                "User: {user_info}"
-                // i {
-                //     class: "icon icon-caret"
-                // }
-            }
-            div {
-                class: "navbar-dropdown",
-                    a {
-                        class: "navbar-item",
-                        href: "/api/trigger_logout",
-                        "Logout"
-                    }
-            }
-        })
-    };
-    cx.render(rsx! {
-        nav {
-            class: "navbar",
-            role: "navigation",
-            // aria-label: "main",
-            div {
-                class: "navbar-brand",
-                a {
-                    class: "navbar-item",
-                    href: "#",
-                    img {
-                        src: "https://bulma.io/images/bulma-logo.png"
-                    }
+#[derive(Prop)]
+struct MainBodyProps<'mainbody> {
+    text: &'mainbody Signal<String>,
+}
+
+#[component]
+fn MainBody<'mainbody, G: Html>(cx: Scope<'mainbody>, props: MainBodyProps<'mainbody>) -> View<G> {
+    view! {cx,
+        section(class="hero is-primary"){
+            div(class="hero-body"){
+                p(class="title"){
+                    "Wasm Website"
+                }
+                p(class="subtitle"){
+                    "Written using Sycamore for frontend, Actix for the backend and web, Bulma for CSS."
                 }
             }
-
-            div {
-                class: "navbar-end",
-                nav_login
-            }
         }
-    })
+        div(class="box"){(*props.text.get())}
+    }
 }
+
+// #[component]
+// async fn AsyncComponent<'asynccomponent, G: Html>(cx: Scope<'asynccomponent>) -> View<G> {
+//     view! {cx,
+//     }
+// }
