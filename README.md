@@ -7,6 +7,10 @@ Attempts to implement BFF (backend for frontend) pattern for login using oidc. I
 
 ![example](./screenshot.png "Example Screenshot")
 
+### Architecture
+Rough architecture
+![architecture](./rust-full-stack-bff.png "High Level Architecture")
+
 ### Prerequisites
 1. Set up google oidc client at https://console.cloud.google.com/apis/credentials
 2. Get GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and set them as environment variables before you run the server binary
