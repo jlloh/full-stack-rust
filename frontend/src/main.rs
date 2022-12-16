@@ -32,7 +32,7 @@ fn main() {
             div(){
                 NavBar(username=username, is_logged_in=is_logged_in)
                 div(class="container is-widescreen"){
-                    MainBody(text=text)
+                    MainBody(text=text, is_logged_in=is_logged_in)
                 }
             }
         }
@@ -100,6 +100,7 @@ fn is_logged_in(user_info: String) -> bool {
 #[derive(Prop)]
 struct MainBodyProps<'mainbody> {
     text: &'mainbody Signal<String>,
+    is_logged_in: &'mainbody ReadSignal<bool>,
 }
 
 #[component]
@@ -115,7 +116,13 @@ fn MainBody<'mainbody, G: Html>(cx: Scope<'mainbody>, props: MainBodyProps<'main
                 }
             }
         }
-        div(class="box"){(*props.text.get())}
+        div(class="box"){
+            (if *props.is_logged_in.get() {
+                view! {cx, (*props.text.get())}
+            } else {
+                view! {cx, "Welcome anonymous user"}
+            }
+            )}
     }
 }
 
