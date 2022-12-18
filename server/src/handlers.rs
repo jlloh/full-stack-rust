@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use crate::{
     auth::{
         get_oidc_login, get_user_from_session_cookie, is_authorised, token_exchange_internal,
@@ -7,8 +9,9 @@ use crate::{
 };
 use actix_session::Session;
 use actix_web::error::ErrorInternalServerError;
-use actix_web::{get, Result as ActixResult};
+use actix_web::{get, Responder, Result as ActixResult};
 use actix_web::{web, HttpResponse};
+use actix_web_lab::sse;
 use log::info;
 use uuid::Uuid;
 
@@ -92,4 +95,13 @@ async fn logout(session: Session) -> ActixResult<HttpResponse> {
     Ok(HttpResponse::TemporaryRedirect()
         .insert_header(("Location", "/"))
         .body("Logged out. Redirecting"))
+}
+
+#[get("/api/subscribe")]
+async fn subscribe(app_state: web::Data<AppState>) -> impl Responder {
+    info!("Subscriber added");
+    let (sender, receiver) = sse::channel(10);
+    let mut sse_senders = app_state.sse_senders.lock().await;
+    (*sse_senders).push(sender);
+    receiver.with_retry_duration(Duration::from_secs(10))
 }

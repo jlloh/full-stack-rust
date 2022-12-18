@@ -1,3 +1,7 @@
+// use futures::{stream, StreamExt};
+use futures::stream::StreamExt;
+use gloo_console::log;
+use gloo_net::eventsource::futures::EventSource;
 use gloo_net::http::Request;
 use gloo_net::Error;
 use sycamore::futures::*;
@@ -17,10 +21,22 @@ fn main() {
                 username.set(anonymous_user)
             };
         });
-        // create effect to retrieve something if he's logged in?
+        // server sent events
+        let live_data = create_signal(cx, "None".to_string());
+        let mut es = EventSource::new("/api/subscribe").unwrap();
+        let mut stream_1 = es.subscribe("data").unwrap();
+        spawn_local_scoped(cx, async move {
+            // weird bug, doesn't work if i don't call es.state() here
+            log!(format!("{:#?}", es.state()));
+            while let Some(Ok((_event_type, msg))) = stream_1.next().await {
+                let x = msg.data().as_string().unwrap();
+                live_data.set(x);
+            }
+        });
+        // retrieve some data from /api/hello
         let text = create_signal(cx, "".to_string());
         spawn_local_scoped(cx, async move {
-            let result = get_string_response("api/hello").await;
+            let result = get_string_response("/api/hello").await;
             if let Ok(x) = result {
                 text.set(x)
             } else {
@@ -32,7 +48,7 @@ fn main() {
             div(){
                 NavBar(username=username, is_logged_in=is_logged_in)
                 div(class="container is-widescreen"){
-                    MainBody(text=text, is_logged_in=is_logged_in)
+                    MainBody(text=live_data, is_logged_in=is_logged_in)
                 }
             }
         }

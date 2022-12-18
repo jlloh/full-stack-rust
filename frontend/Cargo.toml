@@ -9,4 +9,6 @@ edition = "2021"
 dioxus = { version = "0.2.4", features = ["web"] }
 sycamore = {version = "0.8", features = ["suspense"]}
 #reqwest = "0.11.12"
-gloo-net = "0.2.4"
+gloo-net = "0.2.5"
+futures = "0.3.25"
+gloo-console = "0.2.3"
