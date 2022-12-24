@@ -1,4 +1,5 @@
 // use futures::{stream, StreamExt};
+use common::UserInfo;
 use futures::stream::StreamExt;
 use gloo_console::log;
 use gloo_net::eventsource::futures::EventSource;
@@ -10,16 +11,18 @@ use sycamore::prelude::*;
 
 fn main() {
     sycamore::render(|cx| {
-        let anonymous_user = "anonymous".to_string();
-        let username = create_signal(cx, anonymous_user.clone());
-        let is_logged_in = create_selector(cx, || is_logged_in(username.get().to_string()));
+        let username = create_signal(cx, "anonymous".to_string());
+        let is_logged_in = create_signal(cx, false);
         spawn_local_scoped(cx, async move {
-            let user_info = get_string_response("/api/get_user_info").await;
-            if let Ok(x) = user_info {
-                username.set(x)
-            } else {
-                username.set(anonymous_user)
-            };
+            let user_info = get_user_info().await;
+            // can't do error propagation in spawn_local_scoped?
+            match user_info {
+                Ok(x) => {
+                    username.set(x.email);
+                    is_logged_in.set(x.is_logged_in);
+                }
+                Err(e) => log!(format!("Failed to call get_user_info2 with error: {}", e)),
+            }
         });
         // server sent events
         let live_data = create_signal(cx, "None".to_string());
@@ -46,13 +49,21 @@ fn main() {
         view! {
             cx,
             div(){
-                NavBar(username=username, is_logged_in=is_logged_in)
                 div(class="container is-widescreen"){
+                    NavBar(username=username, is_logged_in=is_logged_in)
                     MainBody(text=live_data, is_logged_in=is_logged_in)
                 }
             }
         }
     })
+}
+
+async fn get_user_info() -> Result<UserInfo, Error> {
+    Request::get("/api/get_user_info2")
+        .send()
+        .await?
+        .json()
+        .await
 }
 
 async fn get_string_response(url: &str) -> Result<String, Error> {
@@ -104,14 +115,14 @@ fn NavBarEndMenu<'navbar, G: Html>(cx: Scope<'navbar>, props: NavBarProps<'navba
     }
 }
 
-/// Checked whether email is a valid email
-fn is_logged_in(user_info: String) -> bool {
-    vec!["anonymous", "unknown"]
-        .into_iter()
-        .filter(|x| *x == user_info)
-        .count()
-        == 0
-}
+// /// Checked whether email is a valid email
+// fn is_logged_in(user_info: String) -> bool {
+//     vec!["anonymous", "unknown"]
+//         .into_iter()
+//         .filter(|x| *x == user_info)
+//         .count()
+//         == 0
+// }
 
 #[derive(Prop)]
 struct MainBodyProps<'mainbody> {
@@ -151,11 +162,17 @@ fn MainBody<'mainbody, G: Html>(cx: Scope<'mainbody>, props: MainBodyProps<'main
                     }
 
                     div(class="tile is-child notification is-primary card"){
-                        div(class="card-content"){
-                            button(class="button is-large"){
-                                "Get Number"
+                        div(class="card-content"){(
+                            if *props.is_logged_in.get() {
+                                view! {cx, button(class="button is-large"){
+                                    "Get Number"
+                                }}
+                            } else {
+                                view! {cx, button(class="button is-large", disabled=true){
+                                    "Please Log in to get number"
+                                }}
                             }
-                        }
+                        )}
                     }
                 }
             }

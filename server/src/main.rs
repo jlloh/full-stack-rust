@@ -85,6 +85,7 @@ pub fn start_webserver(sse_senders: Arc<Mutex<Vec<sse::Sender>>>) -> actix_web::
             .service(handlers::login)
             .service(handlers::token_exchange)
             .service(handlers::get_user_info)
+            .service(handlers::get_user_info2)
             .service(handlers::logout)
             .service(handlers::subscribe)
             .service(fs::Files::new("/", "./dist").index_file("index.html"))

@@ -12,3 +12,4 @@ sycamore = {version = "0.8", features = ["suspense"]}
 gloo-net = "0.2.5"
 futures = "0.3.25"
 gloo-console = "0.2.3"
+common = {path="../common"}

@@ -556,6 +556,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -860,6 +867,7 @@ dependencies = [
 name = "frontend"
 version = "0.1.0"
 dependencies = [
+ "common",
  "dioxus",
  "futures",
  "gloo-console",
@@ -1935,6 +1943,7 @@ dependencies = [
  "actix-web",
  "actix-web-lab",
  "anyhow",
+ "common",
  "env_logger",
  "futures",
  "log",

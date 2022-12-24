@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use crate::{
     auth::{
         get_oidc_login, get_user_from_session_cookie, is_authorised, token_exchange_internal,
@@ -12,7 +10,9 @@ use actix_web::error::ErrorInternalServerError;
 use actix_web::{get, Responder, Result as ActixResult};
 use actix_web::{web, HttpResponse};
 use actix_web_lab::sse;
+use common::UserInfo;
 use log::info;
+use std::time::Duration;
 use uuid::Uuid;
 
 #[get("/api/hello")]
@@ -28,6 +28,24 @@ async fn get_user_info(session: Session) -> ActixResult<String> {
         Ok(email)
     } else {
         Ok("anonymous".to_string())
+    }
+}
+
+#[get("/api/get_user_info2")]
+async fn get_user_info2(session: Session) -> ActixResult<web::Json<UserInfo>> {
+    let user = get_user_from_session_cookie(session);
+    if let Ok(Some(email)) = user {
+        let is_logged_in = true;
+        Ok(web::Json(UserInfo {
+            email,
+            is_logged_in,
+        }))
+    } else {
+        let is_logged_in = false;
+        Ok(web::Json(UserInfo {
+            email: "anonymous".to_string(),
+            is_logged_in,
+        }))
     }
 }
 
