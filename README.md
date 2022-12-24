@@ -5,7 +5,7 @@ Adapted from https://robert.kra.hn/posts/2022-04-03_rust-web-wasm/.
 
 Attempts to implement BFF (backend for frontend) pattern for login using oidc. Inspired by Duendesoftware's implementation.
 
-![example](./screenshot.png "Example Screenshot")
+![example](./wasm.gif "Example Screenshot")
 
 ### Architecture
 Rough architecture
