@@ -122,23 +122,43 @@ struct MainBodyProps<'mainbody> {
 #[component]
 fn MainBody<'mainbody, G: Html>(cx: Scope<'mainbody>, props: MainBodyProps<'mainbody>) -> View<G> {
     view! {cx,
-        section(class="hero is-primary"){
-            div(class="hero-body"){
-                p(class="title"){
-                    "Wasm Website"
-                }
-                p(class="subtitle"){
-                    "Written using Sycamore for frontend, Actix for the backend and web, Bulma for CSS."
+            div(class="tile is-ancestor"){
+                div(class="tile is-parent"){
+                    section(class="tile is-4 is-child hero is-info"){
+                        div(class="hero-body"){
+                            p(class="title"){
+                                "Wasm Website"
+                            }
+                            p(class="subtitle"){
+                                "Written using Sycamore for frontend, Actix for the backend and web, Bulma for CSS."
+                            }
+                        }
+                    }
+
+                    section(class="tile is-4 is-child hero is-warning"){
+                        div(class="hero-body"){
+                            p(class="title"){(
+                                if *props.is_logged_in.get() {
+                                    view! {cx, (*props.text.get())}
+                                } else {
+                                    view! {cx, "Welcome anonymous user"}
+                                }
+                            )}
+                            p(class="subtitle"){
+                                "Current Queue"
+                            }
+                        }
+                    }
+
+                    div(class="tile is-child notification is-primary card"){
+                        div(class="card-content"){
+                            button(class="button is-large"){
+                                "Get Number"
+                            }
+                        }
+                    }
                 }
             }
-        }
-        div(class="box"){
-            (if *props.is_logged_in.get() {
-                view! {cx, (*props.text.get())}
-            } else {
-                view! {cx, "Welcome anonymous user"}
-            }
-            )}
     }
 }
 
