@@ -7,9 +7,12 @@ use crate::{
 };
 use actix_session::Session;
 use actix_web::error::ErrorInternalServerError;
-use actix_web::{get, Result as ActixResult};
+use actix_web::{get, Responder, Result as ActixResult};
 use actix_web::{web, HttpResponse};
+use actix_web_lab::sse;
+use common::UserInfo;
 use log::info;
+use std::time::Duration;
 use uuid::Uuid;
 
 #[get("/api/hello")]
@@ -25,6 +28,24 @@ async fn get_user_info(session: Session) -> ActixResult<String> {
         Ok(email)
     } else {
         Ok("anonymous".to_string())
+    }
+}
+
+#[get("/api/get_user_info2")]
+async fn get_user_info2(session: Session) -> ActixResult<web::Json<UserInfo>> {
+    let user = get_user_from_session_cookie(session);
+    if let Ok(Some(email)) = user {
+        let is_logged_in = true;
+        Ok(web::Json(UserInfo {
+            email,
+            is_logged_in,
+        }))
+    } else {
+        let is_logged_in = false;
+        Ok(web::Json(UserInfo {
+            email: "anonymous".to_string(),
+            is_logged_in,
+        }))
     }
 }
 
@@ -92,4 +113,13 @@ async fn logout(session: Session) -> ActixResult<HttpResponse> {
     Ok(HttpResponse::TemporaryRedirect()
         .insert_header(("Location", "/"))
         .body("Logged out. Redirecting"))
+}
+
+#[get("/api/subscribe")]
+async fn subscribe(app_state: web::Data<AppState>) -> impl Responder {
+    info!("Subscriber added");
+    let (sender, receiver) = sse::channel(10);
+    let mut sse_senders = app_state.sse_senders.lock().await;
+    (*sse_senders).push(sender);
+    receiver.with_retry_duration(Duration::from_secs(10))
 }

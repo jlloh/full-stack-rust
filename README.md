@@ -5,11 +5,19 @@ Adapted from https://robert.kra.hn/posts/2022-04-03_rust-web-wasm/.
 
 Attempts to implement BFF (backend for frontend) pattern for login using oidc. Inspired by Duendesoftware's implementation.
 
-![example](./screenshot.png "Example Screenshot")
+![example](./wasm.gif "Example Screenshot")
 
 ### Architecture
 Rough architecture
 ![architecture](./rust-full-stack-bff.png "High Level Architecture")
+
+### Features
+- [x] AuthN with Google OIDC, utilising the BFF architecture
+- [ ] AuthZ: Access control with something like casbin-rs
+- [x] Full stack frontend and backend, with shared structs in `commons`
+- [x] Demo of Server Sent Events as a ticker to frontend
+- [x] Use Bulma CSS and Sycamore-rs for frontend
+- [ ] Integration with a simple database like SQLITE
 
 ### Prerequisites
 1. Set up google oidc client at https://console.cloud.google.com/apis/credentials
@@ -21,7 +29,7 @@ Rough architecture
 1. Build frontend distribution using Trunk
 ```bash
 cd frontend
-trunk build
+trunk build --release
 ```
 2. This will build the wasm bundle in the root ./dist folder
 3. Next, compile the backend from the root folder
@@ -30,6 +38,11 @@ cargo build --release
 ```
 4. Run the binary
 ```
-target/release/server
+RUST_LOG=INFO target/release/server
 ```
 5. Open your browser at localhost:8080
+
+### When developing
+You can watch your front end code with `trunk watch` and start the webserver to serve the frontend 
+
+Note that you'll need to reload the page to see your changes
