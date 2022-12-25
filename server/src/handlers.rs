@@ -1,14 +1,11 @@
 use crate::{
-    auth::{
-        get_oidc_login, get_user_from_session_cookie, is_authorised, token_exchange_internal,
-        Callback,
-    },
+    auth::{get_oidc_login, is_authorised, token_exchange_internal, Callback},
     AppState,
 };
 use actix_session::Session;
 use actix_web::error::ErrorInternalServerError;
 use actix_web::{get, Responder, Result as ActixResult};
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpRequest, HttpResponse};
 use actix_web_lab::sse;
 use common::UserInfo;
 use log::info;
@@ -16,46 +13,33 @@ use std::time::Duration;
 use uuid::Uuid;
 
 #[get("/api/hello")]
-async fn hello(session: Session) -> ActixResult<String> {
-    let user = is_authorised(session)?;
-    Ok(format!("hello there {}", user))
+async fn hello(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<String> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    Ok(format!("hello there {}", user.email))
 }
 
-#[get("/api/get_user_info")]
-async fn get_user_info(session: Session) -> ActixResult<String> {
-    let user = get_user_from_session_cookie(session);
-    if let Ok(Some(email)) = user {
-        Ok(email)
-    } else {
-        Ok("anonymous".to_string())
-    }
+#[get("/public/get_user_info2")]
+async fn get_user_info2(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<web::Json<UserInfo>> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    Ok(web::Json(user))
 }
 
-#[get("/api/get_user_info2")]
-async fn get_user_info2(session: Session) -> ActixResult<web::Json<UserInfo>> {
-    let user = get_user_from_session_cookie(session);
-    if let Ok(Some(email)) = user {
-        let is_logged_in = true;
-        Ok(web::Json(UserInfo {
-            email,
-            is_logged_in,
-        }))
-    } else {
-        let is_logged_in = false;
-        Ok(web::Json(UserInfo {
-            email: "anonymous".to_string(),
-            is_logged_in,
-        }))
-    }
-}
-
-#[get("/api/token_exchange")]
+#[get("/public/token_exchange")]
 async fn token_exchange(
     req_body: web::Query<Callback>,
     app_state: web::Data<AppState>,
     session: Session,
+    request: HttpRequest,
 ) -> ActixResult<HttpResponse> {
-    // info!("api/token_exchange has: {:#?}", session.entries());
+    is_authorised(&session, &app_state.authz_enforcer, request)?;
     match token_exchange_internal(
         app_state.client_id.clone(),
         app_state.client_secret.clone(),
@@ -72,8 +56,14 @@ async fn token_exchange(
 
 /// if anonymous user that is not logged in, we generate a session with key "anonuser" with a uuid to track him.
 /// if he is already logged in?
-#[get("/api/trigger_login")]
-async fn login(app_state: web::Data<AppState>, session: Session) -> ActixResult<HttpResponse> {
+#[get("/public/trigger_login")]
+async fn login(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<HttpResponse> {
+    // authorisation of public endpoints unnecessary? but good hygiene I guess
+    is_authorised(&session, &app_state.authz_enforcer, request)?;
     // if user already logged in, we skip this flow
     if let Some(email) = session.get::<String>("user")? {
         if !email.is_empty() {
@@ -104,11 +94,17 @@ async fn login(app_state: web::Data<AppState>, session: Session) -> ActixResult<
 }
 
 #[get("/api/trigger_logout")]
-async fn logout(session: Session) -> ActixResult<HttpResponse> {
+async fn logout(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<HttpResponse> {
+    is_authorised(&session, &app_state.authz_enforcer, request)?;
     // if user already logged in, we clear his session token
     let user_key = "user";
     if (session.get::<String>(user_key)?).is_some() {
-        session.remove(user_key);
+        // session.remove(user_key);
+        session.clear();
     }
     Ok(HttpResponse::TemporaryRedirect()
         .insert_header(("Location", "/"))
@@ -116,10 +112,29 @@ async fn logout(session: Session) -> ActixResult<HttpResponse> {
 }
 
 #[get("/api/subscribe")]
-async fn subscribe(app_state: web::Data<AppState>) -> impl Responder {
+async fn subscribe(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> impl Responder {
+    match is_authorised(&session, &app_state.authz_enforcer, request) {
+        Ok(_) => (),
+        Err(e) => return Err(e),
+    }
     info!("Subscriber added");
     let (sender, receiver) = sse::channel(10);
     let mut sse_senders = app_state.sse_senders.lock().await;
     (*sse_senders).push(sender);
-    receiver.with_retry_duration(Duration::from_secs(10))
+    Ok(receiver.with_retry_duration(Duration::from_secs(10)))
+}
+
+// Admin handlers
+#[get("/admin/test")]
+async fn admin_test(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<String> {
+    is_authorised(&session, &app_state.authz_enforcer, request)?;
+    Ok("Admin Endpoint".to_string())
 }

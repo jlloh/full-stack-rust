@@ -59,7 +59,7 @@ fn main() {
 }
 
 async fn get_user_info() -> Result<UserInfo, Error> {
-    Request::get("/api/get_user_info2")
+    Request::get("/public/get_user_info2")
         .send()
         .await?
         .json()
@@ -108,7 +108,7 @@ fn NavBarEndMenu<'navbar, G: Html>(cx: Scope<'navbar>, props: NavBarProps<'navba
                 }}
             } else {
                 view! {cx,
-                    a(class="button is-primary", href="/api/trigger_login"){"Login"}
+                    a(class="button is-primary", href="/public/trigger_login"){"Login"}
                 }
             })
         }

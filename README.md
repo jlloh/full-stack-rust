@@ -11,9 +11,14 @@ Attempts to implement BFF (backend for frontend) pattern for login using oidc. I
 Rough architecture
 ![architecture](./rust-full-stack-bff.png "High Level Architecture")
 
+#### API Design
+- `/public/*` endpoints accessible by all
+- `/api/*` endpoints accessible by logged in users
+- `/admin/*` endpoints accessible by only whitelisted emails (hardcoded for now)
+
 ### Features
 - [x] AuthN with Google OIDC, utilising the BFF architecture
-- [ ] AuthZ: Access control with something like casbin-rs
+- [x] AuthZ: Access control with something like casbin-rs
 - [x] Full stack frontend and backend, with shared structs in `commons`
 - [x] Demo of Server Sent Events as a ticker to frontend
 - [x] Use Bulma CSS and Sycamore-rs for frontend
@@ -23,7 +28,7 @@ Rough architecture
 1. Set up google oidc client at https://console.cloud.google.com/apis/credentials
 2. Get GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET and set them as environment variables before you run the server binary
 3. Set an environment variable SERVER_SECRET_KEY to a random string with at least 64 characters for cryptographically signing your tokens. Keep this a secret.
-4. Make sure to set authorised redirect uri to http://localhost:8080/api/token_exchange in your google oauth app
+4. Make sure to set authorised redirect uri to http://localhost:8080/public/token_exchange in your google oauth app
 
 ### Instructions
 1. Build frontend distribution using Trunk

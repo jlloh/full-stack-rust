@@ -1,0 +1,3 @@
+p, (r.subject.is_admin == true && r.subject.is_logged_in == true), /admin/*, read
+p, r.subject.is_logged_in == true, /api/*, read
+p, r.subject.is_logged_in == true || r.subject.is_logged_in == false, /public/*, read

@@ -1,8 +1,11 @@
 use crate::AppState;
 use actix_session::Session;
 use actix_web::error::{ErrorForbidden, ErrorInternalServerError};
-use actix_web::{web, HttpResponse, Result as ActixResult};
+use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
 use anyhow::{anyhow, Context, Result as AnyhowResult};
+use casbin::prelude::*;
+use casbin::Enforcer;
+use common::UserInfo;
 use openidconnect::AuthorizationCode;
 use openidconnect::{
     core::{CoreClient, CoreProviderMetadata, CoreResponseType},
@@ -12,7 +15,7 @@ use openidconnect::{
 };
 use serde::Deserialize;
 
-pub fn get_user_from_session_cookie(session: Session) -> AnyhowResult<Option<String>> {
+fn get_user_from_session_cookie(session: &Session) -> AnyhowResult<Option<String>> {
     if let Some(email) = session.get::<String>("user")? {
         if !email.is_empty() {
             Ok(Some(email))
@@ -24,17 +27,53 @@ pub fn get_user_from_session_cookie(session: Session) -> AnyhowResult<Option<Str
     }
 }
 
-pub fn is_authorised(session: Session) -> ActixResult<String> {
-    let user = get_user_from_session_cookie(session);
-    let result = match user {
+/// Get user info struct from cookie
+pub fn get_userinfo_from_session_cookie(session: &Session) -> AnyhowResult<UserInfo> {
+    let user = get_user_from_session_cookie(session)?;
+    if let Some(email) = user {
+        let is_admin = is_admin(&email);
+        Ok(UserInfo {
+            email,
+            is_logged_in: true,
+            is_admin,
+        })
+    } else {
+        Ok(UserInfo {
+            email: "anonymous".to_string(),
+            is_logged_in: false,
+            is_admin: false,
+        })
+    }
+}
+
+/// static list of admin emails
+fn is_admin(email: &str) -> bool {
+    let admins = vec!["jlloh89@gmail.com"];
+    admins.into_iter().filter(|x| *x == email).count() > 0
+}
+
+/// use casbin-rs to check if authorised to perform action on a given resource
+pub fn is_authorised(
+    session: &Session,
+    authz_enforcer: &Enforcer,
+    request: HttpRequest,
+) -> ActixResult<UserInfo> {
+    let user_info = match get_userinfo_from_session_cookie(session) {
         Ok(inside) => inside,
         Err(e) => return Err(ErrorInternalServerError(e.to_string())),
     };
-    if let Some(user) = result {
-        // check if user in a whitelist?
-        Ok(user)
-    } else {
-        Err(ErrorForbidden("Unauthorised"))
+    let resource = request.path();
+    let action = "read";
+    match authz_enforcer.enforce((&user_info, resource, action)) {
+        Ok(allowed) => {
+            if allowed {
+                Ok(user_info)
+                // Ok("Allowed".to_string())
+            } else {
+                Err(ErrorForbidden("Unauthorised"))
+            }
+        }
+        Err(e) => Err(ErrorInternalServerError(e.to_string())),
     }
 }
 
@@ -110,8 +149,9 @@ pub async fn token_exchange_internal(
 
     // clean up both cookie and internal state
     (*session_oidc_state).remove(&anonuserid);
+    session.clear();
     session.insert("user", email)?;
-    session.remove(anonuser);
+    // session.remove(anonuser);
 
     // redirect
     Ok(HttpResponse::TemporaryRedirect()
@@ -131,7 +171,7 @@ async fn get_oidc_metadata(client_id: String, client_secret: String) -> OidcMeta
     let client_secret = ClientSecret::new(client_secret);
     let issuer_url =
         IssuerUrl::new("https://accounts.google.com".to_string()).expect("Invalid issuer URL");
-    let redirect_url = "http://localhost:8080/api/token_exchange".to_string();
+    let redirect_url = "http://localhost:8080/public/token_exchange".to_string();
 
     OidcMetadata {
         client_id,
