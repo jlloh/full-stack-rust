@@ -1,0 +1,6 @@
+This favicon was generated using the following font:
+
+- Font Title: Just Me Again Down Here
+- Font Author: Copyright (c) 2011 by Kimberly Geswein. All rights reserved.
+- Font Source: http://fonts.gstatic.com/s/justmeagaindownhere/v24/MwQmbgXtz-Wc6RUEGNMc0QpRrfUh2hSdBBMoAuwHvqDwc_fg.ttf
+- Font License: SIL Open Font License, 1.1 (http://scripts.sil.org/OFL))
