@@ -15,6 +15,7 @@ use std::{
 };
 use tokio::sync::Mutex;
 mod auth;
+use casbin::prelude::*;
 use std::env;
 mod handlers;
 
@@ -31,7 +32,7 @@ async fn main() -> Result<()> {
     });
 
     // webserver
-    start_webserver(sender_list).await?;
+    start_webserver(sender_list).await?.await?;
     Ok(())
 }
 
@@ -41,13 +42,16 @@ pub struct AppState {
     pub client_id: String,
     pub client_secret: String,
     pub sse_senders: Arc<Mutex<Vec<sse::Sender>>>,
+    pub authz_enforcer: Enforcer,
 }
 
 const GOOGLE_CLIENT_ID_KEY: &str = "GOOGLE_CLIENT_ID";
 const GOOGLE_CLIENT_SECRET_KEY: &str = "GOOGLE_CLIENT_SECRET";
 const SERVER_SECRET_KEY: &str = "SERVER_SECRET_KEY";
 
-pub fn start_webserver(sse_senders: Arc<Mutex<Vec<sse::Sender>>>) -> actix_web::dev::Server {
+pub async fn start_webserver(
+    sse_senders: Arc<Mutex<Vec<sse::Sender>>>,
+) -> Result<actix_web::dev::Server> {
     let client_id =
         env::var(GOOGLE_CLIENT_ID_KEY).expect("Missing the GOOGLE_CLIENT_ID environment variable.");
     let client_secret = env::var(GOOGLE_CLIENT_SECRET_KEY)
@@ -61,13 +65,17 @@ pub fn start_webserver(sse_senders: Arc<Mutex<Vec<sse::Sender>>>) -> actix_web::
     );
     let secret = Key::from(secret_key.as_bytes());
 
-    info!("Starting webserver");
+    // Casbin for authZ stuff. Create an enforcer
+    let authz_enforcer = Enforcer::new("authz/abac_model.conf", "authz/abac_policy.csv").await?;
+
+    info!("Starting webserver in main thread");
 
     let app_state = Data::new(AppState {
         session_oidc_state: Mutex::new(HashMap::<String, (CsrfToken, Nonce)>::new()),
         client_id,
         client_secret,
         sse_senders,
+        authz_enforcer,
     });
 
     let server = HttpServer::new(move || {
@@ -78,20 +86,22 @@ pub fn start_webserver(sse_senders: Arc<Mutex<Vec<sse::Sender>>>) -> actix_web::
                     .cookie_http_only(true)
                     .cookie_same_site(actix_web::cookie::SameSite::Lax)
                     .cookie_content_security(actix_session::config::CookieContentSecurity::Private)
+                    // session lifecycle defaults to browser and 1 day
+                    // .session_lifecycle()
                     .build(),
             )
             .app_data(app_state.clone())
             .service(handlers::hello)
             .service(handlers::login)
             .service(handlers::token_exchange)
-            .service(handlers::get_user_info)
             .service(handlers::get_user_info2)
             .service(handlers::logout)
             .service(handlers::subscribe)
+            .service(handlers::admin_test)
             .service(fs::Files::new("/", "./dist").index_file("index.html"))
     });
 
-    server.bind(("localhost", 8080)).unwrap().run()
+    Ok(server.bind(("localhost", 8080)).unwrap().run())
 }
 
 async fn sse_sender(sse_senders: Arc<Mutex<Vec<sse::Sender>>>) {
