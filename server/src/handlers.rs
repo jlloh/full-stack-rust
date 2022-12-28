@@ -111,7 +111,7 @@ async fn logout(
         .body("Logged out. Redirecting"))
 }
 
-#[get("/api/subscribe")]
+#[get("/public/subscribe")]
 async fn subscribe(
     app_state: web::Data<AppState>,
     session: Session,
