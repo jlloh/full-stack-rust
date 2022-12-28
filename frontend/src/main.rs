@@ -25,8 +25,8 @@ fn main() {
             }
         });
         // server sent events
-        let live_data = create_signal(cx, "None".to_string());
-        let mut es = EventSource::new("/api/subscribe").unwrap();
+        let live_data = create_signal(cx, "Initialising..".to_string());
+        let mut es = EventSource::new("/public/subscribe").unwrap();
         let mut stream_1 = es.subscribe("data").unwrap();
         spawn_local_scoped(cx, async move {
             // weird bug, doesn't work if i don't call es.state() here
@@ -51,7 +51,7 @@ fn main() {
             div(){
                 div(class="container is-widescreen"){
                     NavBar(username=username, is_logged_in=is_logged_in)
-                    MainBody(text=live_data, is_logged_in=is_logged_in)
+                    Tiles(text=live_data, is_logged_in=is_logged_in)
                 }
             }
         }
@@ -108,7 +108,7 @@ fn NavBarEndMenu<'navbar, G: Html>(cx: Scope<'navbar>, props: NavBarProps<'navba
                 }}
             } else {
                 view! {cx,
-                    a(class="button is-primary", href="/public/trigger_login"){"Login"}
+                    a(class="button is-black", href="/public/trigger_login"){"Login"}
                 }
             })
         }
@@ -125,57 +125,54 @@ fn NavBarEndMenu<'navbar, G: Html>(cx: Scope<'navbar>, props: NavBarProps<'navba
 // }
 
 #[derive(Prop)]
-struct MainBodyProps<'mainbody> {
+struct TilesProps<'mainbody> {
     text: &'mainbody Signal<String>,
     is_logged_in: &'mainbody ReadSignal<bool>,
 }
 
 #[component]
-fn MainBody<'mainbody, G: Html>(cx: Scope<'mainbody>, props: MainBodyProps<'mainbody>) -> View<G> {
+fn Tiles<'mainbody, G: Html>(cx: Scope<'mainbody>, props: TilesProps<'mainbody>) -> View<G> {
     view! {cx,
-            div(class="tile is-ancestor"){
-                div(class="tile is-parent"){
-                    section(class="tile is-4 is-child hero is-info"){
-                        div(class="hero-body"){
-                            p(class="title"){
-                                "Wasm Website"
-                            }
-                            p(class="subtitle"){
-                                "Written using Sycamore for frontend, Actix for the backend and web, Bulma for CSS."
-                            }
-                        }
+        div(class="tile is-ancestor"){
+            div(class="tile is-parent"){
+                article(class="tile is-child notification is-info"){
+                    p(class="title"){
+                        "Queueing App"
                     }
-
-                    section(class="tile is-4 is-child hero is-warning"){
-                        div(class="hero-body"){
-                            p(class="title"){(
-                                if *props.is_logged_in.get() {
-                                    view! {cx, (*props.text.get())}
-                                } else {
-                                    view! {cx, "Welcome anonymous user"}
-                                }
-                            )}
-                            p(class="subtitle"){
-                                "Current Queue"
-                            }
-                        }
-                    }
-
-                    div(class="tile is-child notification is-primary card"){
-                        div(class="card-content"){(
-                            if *props.is_logged_in.get() {
-                                view! {cx, button(class="button is-large"){
-                                    "Get Number"
-                                }}
-                            } else {
-                                view! {cx, button(class="button is-large", disabled=true){
-                                    "Please Log in to get number"
-                                }}
-                            }
-                        )}
+                    p(class="subtitle"){
+                        "Welcome to the queueing app!"
                     }
                 }
             }
+
+            div(class="tile is-parent"){
+                article(class="tile is-child notification is-warning"){
+                    p(class="title"){(
+                        view! {cx, (*props.text.get())}
+                    )}
+                    p(class="subtitle"){
+                        "Current Queue"
+                    }
+                }
+            }
+
+            div(class="tile is-parent"){
+                article(class="tile is-child notification is-primary"){
+                    (
+                        if *props.is_logged_in.get() {
+                            view! {cx, button(class="button is-large"){
+                                "Get Number"
+                            }}
+                        } else {
+                            view! {cx, button(class="button is-large", disabled=true){
+                                "Please Log in to get number"
+                            }}
+                        }
+                    )
+                }
+            }
+
+        }
     }
 }
 
