@@ -1,14 +1,16 @@
+use crate::database;
 use crate::{
     auth::{get_oidc_login, is_authorised, token_exchange_internal, Callback},
     AppState,
 };
 use actix_session::Session;
 use actix_web::error::ErrorInternalServerError;
-use actix_web::{get, Responder, Result as ActixResult};
+use actix_web::{get, post, Responder, Result as ActixResult};
 use actix_web::{web, HttpRequest, HttpResponse};
 use actix_web_lab::sse;
+use anyhow::Result as AnyhowResult;
 use common::UserInfo;
-use log::info;
+use log::{error, info};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -128,6 +130,21 @@ async fn subscribe(
     Ok(receiver.with_retry_duration(Duration::from_secs(10)))
 }
 
+/// API to add new queue
+#[post("/api/get_new_number")]
+async fn get_new_number(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<String> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    // TODO: Check if the person already has a queue number
+    wrap_internal_server_error(database::insert_into_queue(db_connection, user.email))?;
+    // return current queue number
+    Ok("All good".to_string())
+}
+
 // Admin handlers
 #[get("/admin/test")]
 async fn admin_test(
@@ -137,4 +154,16 @@ async fn admin_test(
 ) -> ActixResult<String> {
     is_authorised(&session, &app_state.authz_enforcer, request)?;
     Ok("Admin Endpoint".to_string())
+}
+
+// utils
+fn wrap_internal_server_error<T>(result: AnyhowResult<T>) -> ActixResult<T> {
+    match result {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            let error = format!("Internal server error with error: {:#}", e);
+            error!("{}", error);
+            Err(ErrorInternalServerError(error))
+        }
+    }
 }

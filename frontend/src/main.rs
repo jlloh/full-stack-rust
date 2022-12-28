@@ -1,6 +1,7 @@
 // use futures::{stream, StreamExt};
 use common::UserInfo;
 use futures::stream::StreamExt;
+use gloo_console::info;
 use gloo_console::log;
 use gloo_net::eventsource::futures::EventSource;
 use gloo_net::http::Request;
@@ -13,6 +14,7 @@ fn main() {
     sycamore::render(|cx| {
         let username = create_signal(cx, "anonymous".to_string());
         let is_logged_in = create_signal(cx, false);
+        let get_number_state = create_signal(cx, GetNumberState::NotYetFired);
         spawn_local_scoped(cx, async move {
             let user_info = get_user_info().await;
             // can't do error propagation in spawn_local_scoped?
@@ -51,7 +53,7 @@ fn main() {
             div(){
                 div(class="container is-widescreen"){
                     NavBar(username=username, is_logged_in=is_logged_in)
-                    Tiles(text=live_data, is_logged_in=is_logged_in)
+                    Tiles(text=live_data, is_logged_in=is_logged_in, get_number_state=get_number_state)
                 }
             }
         }
@@ -128,6 +130,7 @@ fn NavBarEndMenu<'navbar, G: Html>(cx: Scope<'navbar>, props: NavBarProps<'navba
 struct TilesProps<'mainbody> {
     text: &'mainbody Signal<String>,
     is_logged_in: &'mainbody ReadSignal<bool>,
+    get_number_state: &'mainbody Signal<GetNumberState>,
 }
 
 #[component]
@@ -148,7 +151,7 @@ fn Tiles<'mainbody, G: Html>(cx: Scope<'mainbody>, props: TilesProps<'mainbody>)
             div(class="tile is-parent"){
                 article(class="tile is-child notification is-warning"){
                     p(class="title"){(
-                        view! {cx, (*props.text.get())}
+                        *props.text.get()
                     )}
                     p(class="subtitle"){
                         "Current Queue"
@@ -158,22 +161,133 @@ fn Tiles<'mainbody, G: Html>(cx: Scope<'mainbody>, props: TilesProps<'mainbody>)
 
             div(class="tile is-parent"){
                 article(class="tile is-child notification is-primary"){
-                    (
-                        if *props.is_logged_in.get() {
-                            view! {cx, button(class="button is-large"){
-                                "Get Number"
-                            }}
-                        } else {
-                            view! {cx, button(class="button is-large", disabled=true){
-                                "Please Log in to get number"
-                            }}
-                        }
-                    )
+                    TheButton(props)
                 }
             }
 
         }
     }
+}
+
+#[component]
+fn TheButton<'mainbody, G: Html>(cx: Scope<'mainbody>, props: TilesProps<'mainbody>) -> View<G> {
+    view! {cx,
+    (
+        if *props.is_logged_in.get() {
+            // TODO: This should be a derived state since it's a composite between is_logged_in
+            match *props.get_number_state.get() {
+                    GetNumberState::NotYetFired =>
+                        view! {cx,
+                            button(class="button is-large", on:click= move |_| {
+                                // spawn_local_scoped(cx, handle_get_number(props.get_number_state));
+                                spawn_local_scoped(cx, async move {
+                                    (*props.get_number_state).set(GetNumberState::Processing);
+                                    let req = match Request::post("/api/get_new_number").send().await {
+                                        Ok(response) => {
+                                            info!("Done firing getting new number");
+                                            response
+                                        }
+                                        Err(_) => {
+                                            info!("Error when firing request to get_number_number endpoint");
+                                            (*props.get_number_state).set(GetNumberState::Failed);
+                                            return;
+                                        }
+                                    };
+                                    if !req.ok() {
+                                        (*props.get_number_state).set(GetNumberState::Failed);
+                                        info!("Error when trying to obtain queue number. Check serverside logs")
+                                    } else {
+                                        info!("Done firing getting new number");
+                                        (*props.get_number_state).set(GetNumberState::Done);
+                                    }
+
+                                })
+                                // (*props.get_number_state).set(GetNumberState::Done);
+                            })
+                            {
+                                "Get Number"
+                            }
+                        }
+                    ,
+                    GetNumberState::Processing =>
+                        view! {cx,
+                            button(class="button is-large", disabled=true){
+                                "Processing..."
+                            }
+                        }
+                    ,
+                    GetNumberState::Done =>
+                        view! {cx,
+                            button(class="button is-large", disabled=true){
+                                "Number Obtained."
+                            }
+                        }
+                    ,
+                    GetNumberState::Failed =>
+                        view! {cx,
+                            button(class="button is-large", disabled=true){
+                                "Failed to obtain number"
+                            }
+                        }
+                    ,
+                }
+        } else {
+            view! {cx,
+                button(class="button is-large", disabled=true){
+                    "Please Log in to get number"
+                }
+            }
+        }
+
+    )
+    }
+}
+
+enum GetNumberState {
+    NotYetFired,
+    Processing,
+    Done,
+    Failed,
+}
+
+// async fn handle_test() {
+//     info!("Test test");
+//     let req_result = Request::post("/api/get_new_number").send().await;
+//     info!("Test2 test2");
+// }
+
+async fn handle_get_number(get_number_state: &Signal<GetNumberState>) {
+    (*get_number_state).set(GetNumberState::Processing);
+    info!("Test test");
+    // let req_result = Request::post("/api/get_new_number").send().await;
+    // if req_result.is_err() {
+    //     info!("Error when firing request to get_number_number endpoint");
+    //     (*get_number_state).set(GetNumberState::Failed);
+    // }
+
+    let req = match Request::post("/api/get_new_number").send().await {
+        Ok(response) => {
+            info!("Done firing getting new number");
+            response
+        }
+        Err(_) => {
+            // TODO: Error handling does not work because future is aborted before this can be called
+            info!("Error when firing request to get_number_number endpoint");
+            (*get_number_state).set(GetNumberState::Failed);
+            return;
+        }
+    };
+    if !req.ok() {
+        (*get_number_state).set(GetNumberState::Failed);
+        info!("Error when trying to obtain queue number. Check serverside logs")
+    } else {
+        info!("Done firing getting new number");
+        (*get_number_state).set(GetNumberState::Done);
+    }
+}
+
+async fn async_request() {
+    let request = Request::post("/api/get_new_number").send().await;
 }
 
 // #[component]
