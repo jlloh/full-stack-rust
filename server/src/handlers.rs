@@ -1,14 +1,16 @@
+use crate::database;
 use crate::{
     auth::{get_oidc_login, is_authorised, token_exchange_internal, Callback},
     AppState,
 };
 use actix_session::Session;
 use actix_web::error::ErrorInternalServerError;
-use actix_web::{get, Responder, Result as ActixResult};
+use actix_web::{get, post, Responder, Result as ActixResult};
 use actix_web::{web, HttpRequest, HttpResponse};
 use actix_web_lab::sse;
+use anyhow::Result as AnyhowResult;
 use common::UserInfo;
-use log::info;
+use log::{error, info};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -22,13 +24,24 @@ async fn hello(
     Ok(format!("hello there {}", user.email))
 }
 
+/// Endpoint to get user info, e.g. his username, etc.
 #[get("/public/get_user_info2")]
 async fn get_user_info2(
     app_state: web::Data<AppState>,
     session: Session,
     request: HttpRequest,
 ) -> ActixResult<web::Json<UserInfo>> {
-    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let mut user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+
+    // Get user assigned queue number if it exists
+    // TODO: Should we store assigned queue number in the cookie as well? Probably not
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    let user_assigned_number = wrap_internal_server_error(database::get_user_assigned_queue(
+        db_connection,
+        &user.email,
+    ))?;
+    user.assigned_number = user_assigned_number;
+
     Ok(web::Json(user))
 }
 
@@ -128,6 +141,48 @@ async fn subscribe(
     Ok(receiver.with_retry_duration(Duration::from_secs(10)))
 }
 
+/// API to add new queue
+#[post("/api/get_new_number")]
+async fn get_new_number(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<web::Json<UserInfo>> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    let user_info = wrap_internal_server_error(database::get_or_insert(db_connection, user))?;
+    Ok(web::Json(user_info))
+}
+
+/// API to get assigned number if it exists
+#[get("/api/get_assigned_number")]
+async fn get_assigned_number(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<String> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    let _assigned_number = wrap_internal_server_error(database::get_user_assigned_queue(
+        db_connection,
+        &user.email,
+    ))?;
+    Ok("Ok".to_string())
+}
+
+/// API to abandon number
+#[post("/api/abandon_assigned_number")]
+async fn abandon_assigned_number(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<String> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    wrap_internal_server_error(database::set_to_abandoned(db_connection, user))?;
+    Ok("Ok".to_string())
+}
+
 // Admin handlers
 #[get("/admin/test")]
 async fn admin_test(
@@ -137,4 +192,16 @@ async fn admin_test(
 ) -> ActixResult<String> {
     is_authorised(&session, &app_state.authz_enforcer, request)?;
     Ok("Admin Endpoint".to_string())
+}
+
+// utils
+fn wrap_internal_server_error<T>(result: AnyhowResult<T>) -> ActixResult<T> {
+    match result {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            let error = format!("Internal server error with error: {:#}", e);
+            error!("{}", error);
+            Err(ErrorInternalServerError(error))
+        }
+    }
 }

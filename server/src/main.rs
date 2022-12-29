@@ -4,6 +4,10 @@ use actix_session::SessionMiddleware;
 use actix_web::{cookie::Key, web::Data, App, HttpServer};
 use actix_web_lab::sse;
 use anyhow::Result;
+use diesel::{
+    r2d2::{ConnectionManager, Pool},
+    SqliteConnection,
+};
 use futures::{executor::block_on, future::join_all};
 use log::info;
 use openidconnect::{CsrfToken, Nonce};
@@ -15,8 +19,12 @@ use std::{
 };
 use tokio::sync::Mutex;
 mod auth;
+pub mod database;
+pub mod schema;
 use casbin::prelude::*;
 use std::env;
+
+use crate::database::establish_connection_pool;
 mod handlers;
 
 #[actix_web::main]
@@ -43,11 +51,14 @@ pub struct AppState {
     pub client_secret: String,
     pub sse_senders: Arc<Mutex<Vec<sse::Sender>>>,
     pub authz_enforcer: Enforcer,
+    pub db_connection_pool: Pool<ConnectionManager<SqliteConnection>>, // pub db_connection: Arc<SqliteConnection>,
 }
 
 const GOOGLE_CLIENT_ID_KEY: &str = "GOOGLE_CLIENT_ID";
 const GOOGLE_CLIENT_SECRET_KEY: &str = "GOOGLE_CLIENT_SECRET";
 const SERVER_SECRET_KEY: &str = "SERVER_SECRET_KEY";
+const DATABASE_URL_KEY: &str = "DATABASE_URL";
+const ANONYMOUS: &str = "anonymous";
 
 pub async fn start_webserver(
     sse_senders: Arc<Mutex<Vec<sse::Sender>>>,
@@ -68,6 +79,9 @@ pub async fn start_webserver(
     // Casbin for authZ stuff. Create an enforcer
     let authz_enforcer = Enforcer::new("authz/abac_model.conf", "authz/abac_policy.csv").await?;
 
+    info!("Establishing database connection");
+    let db_connection_pool = establish_connection_pool();
+
     info!("Starting webserver in main thread");
 
     let app_state = Data::new(AppState {
@@ -76,6 +90,7 @@ pub async fn start_webserver(
         client_secret,
         sse_senders,
         authz_enforcer,
+        db_connection_pool,
     });
 
     let server = HttpServer::new(move || {
@@ -98,6 +113,8 @@ pub async fn start_webserver(
             .service(handlers::logout)
             .service(handlers::subscribe)
             .service(handlers::admin_test)
+            .service(handlers::get_new_number)
+            .service(handlers::abandon_assigned_number)
             .service(fs::Files::new("/", "./dist").index_file("index.html"))
     });
 
