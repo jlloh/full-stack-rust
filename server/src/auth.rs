@@ -1,4 +1,4 @@
-use crate::AppState;
+use crate::{AppState, ANONYMOUS};
 use actix_session::Session;
 use actix_web::error::{ErrorForbidden, ErrorInternalServerError};
 use actix_web::{web, HttpRequest, HttpResponse, Result as ActixResult};
@@ -36,12 +36,14 @@ pub fn get_userinfo_from_session_cookie(session: &Session) -> AnyhowResult<UserI
             email,
             is_logged_in: true,
             is_admin,
+            assigned_number: None,
         })
     } else {
         Ok(UserInfo {
-            email: "anonymous".to_string(),
+            email: ANONYMOUS.to_string(),
             is_logged_in: false,
             is_admin: false,
+            assigned_number: None,
         })
     }
 }

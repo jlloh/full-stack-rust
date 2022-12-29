@@ -24,13 +24,24 @@ async fn hello(
     Ok(format!("hello there {}", user.email))
 }
 
+/// Endpoint to get user info, e.g. his username, etc.
 #[get("/public/get_user_info2")]
 async fn get_user_info2(
     app_state: web::Data<AppState>,
     session: Session,
     request: HttpRequest,
 ) -> ActixResult<web::Json<UserInfo>> {
-    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let mut user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+
+    // Get user assigned queue number if it exists
+    // TODO: Should we store assigned queue number in the cookie as well? Probably not
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    let user_assigned_number = wrap_internal_server_error(database::get_user_assigned_queue(
+        db_connection,
+        &user.email,
+    ))?;
+    user.assigned_number = user_assigned_number;
+
     Ok(web::Json(user))
 }
 
@@ -136,13 +147,40 @@ async fn get_new_number(
     app_state: web::Data<AppState>,
     session: Session,
     request: HttpRequest,
+) -> ActixResult<web::Json<UserInfo>> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    let user_info = wrap_internal_server_error(database::get_or_insert(db_connection, user))?;
+    Ok(web::Json(user_info))
+}
+
+/// API to get assigned number if it exists
+#[get("/api/get_assigned_number")]
+async fn get_assigned_number(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
 ) -> ActixResult<String> {
     let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
     let db_connection = &mut app_state.db_connection_pool.get().unwrap();
-    // TODO: Check if the person already has a queue number
-    wrap_internal_server_error(database::insert_into_queue(db_connection, user.email))?;
-    // return current queue number
-    Ok("All good".to_string())
+    let _assigned_number = wrap_internal_server_error(database::get_user_assigned_queue(
+        db_connection,
+        &user.email,
+    ))?;
+    Ok("Ok".to_string())
+}
+
+/// API to abandon number
+#[post("/api/abandon_assigned_number")]
+async fn abandon_assigned_number(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<String> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    wrap_internal_server_error(database::set_to_abandoned(db_connection, user))?;
+    Ok("Ok".to_string())
 }
 
 // Admin handlers

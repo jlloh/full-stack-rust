@@ -58,6 +58,7 @@ const GOOGLE_CLIENT_ID_KEY: &str = "GOOGLE_CLIENT_ID";
 const GOOGLE_CLIENT_SECRET_KEY: &str = "GOOGLE_CLIENT_SECRET";
 const SERVER_SECRET_KEY: &str = "SERVER_SECRET_KEY";
 const DATABASE_URL_KEY: &str = "DATABASE_URL";
+const ANONYMOUS: &str = "anonymous";
 
 pub async fn start_webserver(
     sse_senders: Arc<Mutex<Vec<sse::Sender>>>,
@@ -113,6 +114,7 @@ pub async fn start_webserver(
             .service(handlers::subscribe)
             .service(handlers::admin_test)
             .service(handlers::get_new_number)
+            .service(handlers::abandon_assigned_number)
             .service(fs::Files::new("/", "./dist").index_file("index.html"))
     });
 
