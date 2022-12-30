@@ -104,9 +104,13 @@ pub async fn token_exchange_internal(
     // Retrieved stored nonce and csrf token
     let mut session_oidc_state = app_state.session_oidc_state.lock().await;
     // .expect("Expected to be able to lock mutex");
-    let (stored_csrf, stored_nonce) =
-        if let Some((csrf, nonce)) = session_oidc_state.get(&anonuserid) {
-            Ok((csrf, nonce))
+    let (stored_csrf, stored_nonce, subapp) =
+        if let Some(oidc_metadata) = session_oidc_state.get(&anonuserid) {
+            Ok((
+                &oidc_metadata.csrf_token,
+                &oidc_metadata.nonce,
+                &oidc_metadata.subapp,
+            ))
         } else {
             Err(anyhow!("State store did not have necessary info",))
         }?;
@@ -149,6 +153,7 @@ pub async fn token_exchange_internal(
         Err(anyhow!("No email found in claims"))
     }?;
 
+    let redirect_url = format!("/{}", subapp);
     // clean up both cookie and internal state
     (*session_oidc_state).remove(&anonuserid);
     session.clear();
@@ -157,7 +162,7 @@ pub async fn token_exchange_internal(
 
     // redirect
     Ok(HttpResponse::TemporaryRedirect()
-        .insert_header(("Location", "/"))
+        .insert_header(("Location", redirect_url))
         .body("Redirecting to login"))
 }
 
