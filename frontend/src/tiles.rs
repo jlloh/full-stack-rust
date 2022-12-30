@@ -1,4 +1,5 @@
 use crate::button::GetNumberState;
+use crate::Panel;
 use crate::TheButton;
 use sycamore::prelude::*;
 
@@ -11,6 +12,8 @@ pub struct TilesProps<'mainbody> {
     pub get_number_state: &'mainbody Signal<GetNumberState>,
     pub assigned_number: &'mainbody Signal<Option<i32>>,
     pub should_display_abandon_modal: &'mainbody Signal<bool>,
+    pub abandoned_numbers: &'mainbody Signal<Vec<i32>>,
+    pub done_numbers: &'mainbody Signal<Vec<i32>>,
 }
 
 #[component]
@@ -45,7 +48,7 @@ pub fn Tiles<'mainbody, G: Html>(cx: Scope<'mainbody>, props: TilesProps<'mainbo
                 }
             }
 
-            div(class="tile is-parent"){
+            div(class="tile is-parent is-vertical"){
                 article(class="tile is-child notification is-primary"){
                     p(class="title"){(
                         if let Some(number) = *props.assigned_number.get() {
@@ -65,7 +68,12 @@ pub fn Tiles<'mainbody, G: Html>(cx: Scope<'mainbody>, props: TilesProps<'mainbo
                         should_display_abandon_modal=props.should_display_abandon_modal
                     )
                 }
+                    Panel(abandoned_numbers=props.abandoned_numbers, done_numbers=props.done_numbers)
             }
+
+            // div(class="tile is-parent"){
+            //     Panel()
+            // }
 
         }
     }

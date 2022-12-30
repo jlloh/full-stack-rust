@@ -12,4 +12,6 @@ pub struct UserInfo {
 pub struct ServerSentData {
     pub selected_number: Option<i32>,
     pub assigned_number: Option<i32>,
+    pub done_numbers: Vec<i32>,
+    pub abandoned_numbers: Vec<i32>,
 }

@@ -1,4 +1,6 @@
 mod abandon_confirmation_modal;
+mod panel;
+// use gloo_console::info;
 mod button;
 mod navbar;
 mod tiles;
@@ -14,6 +16,7 @@ use gloo_net::eventsource::futures::EventSource;
 use gloo_net::http::Request;
 use gloo_net::Error;
 use navbar::NavBar;
+use panel::Panel;
 use serde::de;
 use sycamore::futures::*;
 use sycamore::prelude::*;
@@ -34,8 +37,10 @@ fn main() {
         let get_number_state = create_signal(cx, GetNumberState::New);
         let assigned_number = create_signal(cx, None::<i32>);
         let should_display_abandon_modal = create_signal(cx, false);
-        // let live_data = create_signal(cx, "Initialising..".to_string());
         let selected_number = create_signal(cx, None::<i32>);
+        // let items = create_signal(cx, Vec::<i32>::new());
+        let abandoned_numbers = create_signal(cx, Vec::<i32>::new());
+        let done_numbers = create_signal(cx, Vec::<i32>::new());
         // Derived signals
         let should_disable_button = create_memo(cx, || {
             if *is_logged_in.get() {
@@ -76,15 +81,19 @@ fn main() {
             }
         });
 
-        spawn_local_scoped(cx, async move {
-            // let result =
-            let result = get_json_response::<ServerSentData>("/public/get_selected_number").await;
-            if let Ok(data) = result {
-                selected_number.set(data.selected_number);
-                assigned_number.set(data.assigned_number);
-                if data.assigned_number.is_some() {
-                    get_number_state.set(GetNumberState::Done);
-                }
+        // TODO: Remove this if we can push from serverside
+        create_effect(cx, move || {
+            if *get_number_state.get() == GetNumberState::New {
+                spawn_local_scoped(cx, async move {
+                    let result =
+                        get_json_response::<ServerSentData>("/public/get_selected_number").await;
+                    if let Ok(data) = result {
+                        selected_number.set(data.selected_number);
+                        assigned_number.set(data.assigned_number);
+                        abandoned_numbers.set(data.abandoned_numbers);
+                        done_numbers.set(data.done_numbers);
+                    }
+                });
             }
         });
         // server sent events
@@ -100,23 +109,13 @@ fn main() {
                     .expect("Expected to be able to deserialise server sent event");
                 selected_number.set(data.selected_number);
                 assigned_number.set(data.assigned_number);
-                if data.assigned_number.is_some() {
-                    get_number_state.set(GetNumberState::Done);
-                }
-                // if let Some(number) = data.selected_number {
-                //     live_data.set(number.to_string());
-                // }
-                // live_data.set(data.selected_number);
+                abandoned_numbers.set(data.abandoned_numbers);
+                done_numbers.set(data.done_numbers);
             }
         });
 
         // Can an effect update a signal?
         create_effect(cx, || {
-            // let assigned_number = if let Some(number) = *assigned_number.get() {
-            //     number.to_string()
-            // } else {
-            //     "None".to_string()
-            // };
             if *selected_number.get() == *assigned_number.get() {
                 if selected_number.get().is_some() {
                     get_number_state.set(GetNumberState::Locked)
@@ -124,6 +123,8 @@ fn main() {
             } else if *get_number_state.get() == GetNumberState::Locked {
                 // if numbers are not equal, and state is locked, reset it
                 get_number_state.set(GetNumberState::New)
+            } else if (*assigned_number.get()).is_some() {
+                get_number_state.set(GetNumberState::Done)
             };
         });
 
@@ -149,7 +150,9 @@ fn main() {
                                         assigned_number=assigned_number,
                                         should_disable_button=should_disable_button,
                                         button_text=button_text,
-                                        should_display_abandon_modal=should_display_abandon_modal
+                                        should_display_abandon_modal=should_display_abandon_modal,
+                                        abandoned_numbers=abandoned_numbers,
+                                        done_numbers=done_numbers
                                     )
                                     AbandonConfirmationModal(
                                         should_display_abandon_modal=should_display_abandon_modal,
@@ -170,6 +173,6 @@ async fn get_json_response<T: de::DeserializeOwned>(url: &str) -> Result<T, Erro
     Request::get(url).send().await?.json::<T>().await
 }
 
-async fn get_string_response(url: &str) -> Result<String, Error> {
-    Request::get(url).send().await.unwrap().text().await
-}
+// async fn get_string_response(url: &str) -> Result<String, Error> {
+//     Request::get(url).send().await.unwrap().text().await
+// }

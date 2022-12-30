@@ -137,3 +137,21 @@ pub fn get_selected_queue(con: &mut SqliteConnection) -> AnyhowResult<Option<i32
         )),
     }
 }
+
+/// Get abandoned and processed queue objects for given user
+pub fn get_abandoned_and_processed(
+    con: &mut SqliteConnection,
+    provided_user: &str,
+) -> AnyhowResult<(Vec<i32>, Vec<i32>)> {
+    let results = queue::table
+        .filter(queue::user.eq(provided_user))
+        .filter(queue::is_abandoned.eq(true))
+        .or_filter(queue::is_processed.eq(true))
+        .load::<QueueRow>(con)?;
+    let (abandoned, processed): (Vec<QueueRow>, Vec<QueueRow>) =
+        results.into_iter().partition(|item| item.is_abandoned);
+    Ok((
+        abandoned.iter().map(|x| x.id).collect(),
+        processed.iter().map(|x| x.id).collect(),
+    ))
+}

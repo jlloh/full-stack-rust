@@ -5,7 +5,9 @@ use actix_web::{cookie::Key, web::to, web::Data, App, HttpServer};
 use actix_web_lab::sse;
 use anyhow::Result;
 use common::ServerSentData;
-use database::get_selected_queue;
+use database::{
+    get_abandoned_and_processed, get_selected_queue, get_user_assigned_queue, QueueRow,
+};
 use diesel::{
     r2d2::{ConnectionManager, Pool},
     SqliteConnection,
@@ -33,7 +35,7 @@ async fn main() -> Result<()> {
     let db_connection_pool_2 = establish_connection_pool();
 
     // sse sender in another tokio task
-    let sender_list = Arc::new(Mutex::new(vec![]));
+    let sender_list = Arc::new(Mutex::new(HashMap::new()));
     let sender_list_copy = sender_list.clone();
     let _sender_task = thread::spawn(move || {
         info!("Starting server side event sender in background thread..");
@@ -53,6 +55,7 @@ pub struct OidcMetadata {
     pub subapp: String,
 }
 
+#[derive(Clone)]
 pub struct SseSender {
     uuid: String,
     sender: sse::Sender,
@@ -63,7 +66,7 @@ pub struct AppState {
     pub session_oidc_state: Mutex<HashMap<String, OidcMetadata>>,
     pub client_id: String,
     pub client_secret: String,
-    pub sse_senders: Arc<Mutex<Vec<sse::Sender>>>,
+    pub sse_senders: Arc<Mutex<HashMap<String, Vec<SseSender>>>>,
     pub authz_enforcer: Enforcer,
     pub db_connection_pool: Pool<ConnectionManager<SqliteConnection>>, // pub db_connection: Arc<SqliteConnection>,
 }
@@ -75,7 +78,7 @@ const DATABASE_URL_KEY: &str = "DATABASE_URL";
 const ANONYMOUS: &str = "anonymous";
 
 pub async fn start_webserver(
-    sse_senders: Arc<Mutex<Vec<sse::Sender>>>,
+    sse_senders: Arc<Mutex<HashMap<String, Vec<SseSender>>>>,
     db_connection_pool: Pool<ConnectionManager<SqliteConnection>>,
 ) -> Result<actix_web::dev::Server> {
     let client_id =
@@ -138,7 +141,7 @@ pub async fn start_webserver(
 
 /// Sender for current queue
 async fn sse_sender(
-    sse_senders: Arc<Mutex<Vec<sse::Sender>>>,
+    sse_senders: Arc<Mutex<HashMap<String, Vec<SseSender>>>>,
     db_connection_pool: Pool<ConnectionManager<SqliteConnection>>,
 ) {
     // let now = SystemTime::now();
@@ -149,42 +152,76 @@ async fn sse_sender(
         let db_connection = &mut db_connection_pool.get().unwrap();
         let queried_number = get_selected_queue(db_connection).unwrap();
         // if somebody new has joined the subscribers
+        // info!("{:?}, {:?}", queried_number, current_number);
         // we should send him the value
         if queried_number != current_number {
             // use an Arc and Mutex. But does this mean I'm blocking new subscribers when I'm sending events
-            // let content = if let Some(number) = queried_number {
-            //     number.to_string()
-            // } else {
-            //     "None".to_string()
-            // };
             let mut senders = sse_senders.lock().await;
-            let futures = senders.clone().into_iter().map(|sender| {
-                send_message(
-                    ServerSentData {
-                        selected_number: queried_number,
-                        assigned_number: None,
-                    },
-                    sender,
-                )
+            let futures = senders.clone().into_iter().map(|(user, senders)| {
+                let assigned_number = get_user_assigned_queue(db_connection, &user).unwrap();
+                let (abandoned_numbers, done_numbers) =
+                    get_abandoned_and_processed(db_connection, &user).unwrap();
+                senders.into_iter().map(move |sender| {
+                    // get assigned_number from sender.user
+                    send_message(
+                        ServerSentData {
+                            selected_number: queried_number,
+                            assigned_number,
+                            abandoned_numbers: abandoned_numbers.clone(),
+                            done_numbers: done_numbers.clone(),
+                        },
+                        user.clone(),
+                        sender,
+                    )
+                })
             });
             // channels that are able to have stuff sent to them are still alive
             // we overwrite the original list of senders with list of new senders
-            let open_channels: Vec<sse::Sender> =
-                join_all(futures).await.into_iter().flatten().collect();
-            (*senders) = open_channels.clone();
+            let updated_senders = join_all(futures.flatten())
+                .await
+                .into_iter()
+                // .filter(|(user, after_sent)| after_sent.is_some())
+                .fold(
+                    HashMap::<String, Vec<SseSender>>::new(),
+                    |acc, (user, optional_sender)| {
+                        let mut result = acc;
+                        if let Some(sender) = optional_sender {
+                            if let Some(current_sender_list) = result.get(&user) {
+                                let mut new_list = current_sender_list.clone();
+                                new_list.push(sender);
+                                result.insert(user, new_list);
+                                result
+                            } else {
+                                result.insert(user, vec![sender]);
+                                result
+                            }
+                        } else {
+                            result
+                        }
+                    },
+                );
+            // let open_channels: Vec<sse::Sender> =
+            //     join_all(futures).await.into_iter().flatten().collect();
+            (*senders) = updated_senders;
             current_number = queried_number;
             // current_senders = open_channels;
         }
     }
 }
 
-async fn send_message(message: ServerSentData, sender: sse::Sender) -> Option<sse::Sender> {
+async fn send_message(
+    message: ServerSentData,
+    user: String,
+    // sender: sse::Sender,
+    sender: SseSender,
+) -> (String, Option<SseSender>) {
     let mut data = sse::Data::new(
         serde_json::to_string(&message).expect("Expected to be able to serialise as string"),
     );
     data.set_event("data");
-    match sender.send(data).await {
+    let after_sent = match sender.sender.send(data).await {
         Ok(_) => Some(sender),
         Err(_) => None,
-    }
+    };
+    (user, after_sent)
 }

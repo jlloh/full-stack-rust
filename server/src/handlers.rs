@@ -1,6 +1,6 @@
 use crate::{
     auth::{get_oidc_login, is_authorised, token_exchange_internal, Callback},
-    AppState,
+    AppState, SseSender,
 };
 use crate::{database, OidcMetadata};
 use actix_session::Session;
@@ -151,14 +151,23 @@ async fn subscribe(
     session: Session,
     request: HttpRequest,
 ) -> impl Responder {
-    match is_authorised(&session, &app_state.authz_enforcer, request) {
-        Ok(_) => (),
+    let user = match is_authorised(&session, &app_state.authz_enforcer, request) {
+        Ok(x) => x,
         Err(e) => return Err(e),
-    }
+    };
     info!("Subscriber added");
     let (sender, receiver) = sse::channel(10);
     let mut sse_senders = app_state.sse_senders.lock().await;
-    (*sse_senders).push(sender);
+    let uuid = Uuid::new_v4().to_string();
+    let item = SseSender { sender, uuid };
+    if let Some(sender_list) = sse_senders.get(&user.email) {
+        let mut new_list = sender_list.clone();
+        new_list.push(item);
+        sse_senders.insert(user.email, new_list);
+    } else {
+        sse_senders.insert(user.email, vec![item]);
+    }
+    // (*sse_senders).push(sender);
     Ok(receiver.with_retry_duration(Duration::from_secs(10)))
 }
 
@@ -175,9 +184,14 @@ async fn get_selected_number(
         db_connection,
         &user.email,
     ))?;
+    let (abandoned_numbers, done_numbers) = wrap_internal_server_error(
+        database::get_abandoned_and_processed(db_connection, &user.email),
+    )?;
     Ok(web::Json(ServerSentData {
         selected_number,
         assigned_number,
+        abandoned_numbers,
+        done_numbers,
     }))
     // match selected_number {
     //     Some(number) => Ok(number.to_string()),

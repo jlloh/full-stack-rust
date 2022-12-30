@@ -70,7 +70,7 @@ async fn handle_abandon_number(
             return;
         }
     };
-    (*get_number_state).set(GetNumberState::New);
     (*assigned_number).set(None);
     (*should_display_abandon_modal).set(false);
+    (*get_number_state).set(GetNumberState::New);
 }

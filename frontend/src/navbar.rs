@@ -3,7 +3,7 @@ use sycamore::prelude::*;
 
 #[derive(Prop, Clone)]
 pub struct NavBarProps<'navbar> {
-    username: &'navbar Signal<String>,
+    username: &'navbar ReadSignal<String>,
     is_logged_in: &'navbar ReadSignal<bool>,
     subapp: String,
 }
