@@ -4,12 +4,19 @@ use gloo_net::http::Request;
 use sycamore::futures::*;
 use sycamore::prelude::*;
 
-use crate::tiles::TilesProps;
+#[derive(Prop)]
+pub struct ButtonProps<'mainbody> {
+    should_disable_button: &'mainbody ReadSignal<bool>,
+    button_text: &'mainbody ReadSignal<String>,
+    get_number_state: &'mainbody Signal<GetNumberState>,
+    assigned_number: &'mainbody Signal<Option<i32>>,
+    should_display_abandon_modal: &'mainbody Signal<bool>,
+}
 
 #[component]
 pub fn TheButton<'mainbody, G: Html>(
     cx: Scope<'mainbody>,
-    props: TilesProps<'mainbody>,
+    props: ButtonProps<'mainbody>,
 ) -> View<G> {
     view! {
         cx,
@@ -28,10 +35,12 @@ pub fn TheButton<'mainbody, G: Html>(
 
 #[derive(PartialEq, Eq)]
 pub enum GetNumberState {
-    NotYetFired,
+    New,
     Processing,
     Done,
     Failed,
+    // Locked state for when assigned number is being processed
+    Locked,
 }
 
 async fn handle_get_number(
@@ -41,7 +50,8 @@ async fn handle_get_number(
 ) {
     // Abandon number flow. Toggle a modal?
     if (*get_number_state.get()) == GetNumberState::Done {
-        (*should_display_abandon_modal).set(true)
+        (*should_display_abandon_modal).set(true);
+        return;
     }
 
     // Get number flow

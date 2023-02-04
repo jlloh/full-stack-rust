@@ -1,18 +1,26 @@
-use crate::database;
 use crate::{
     auth::{get_oidc_login, is_authorised, token_exchange_internal, Callback},
-    AppState,
+    AppState, SseSender,
 };
+use crate::{database, OidcMetadata};
 use actix_session::Session;
 use actix_web::error::ErrorInternalServerError;
 use actix_web::{get, post, Responder, Result as ActixResult};
 use actix_web::{web, HttpRequest, HttpResponse};
 use actix_web_lab::sse;
 use anyhow::Result as AnyhowResult;
-use common::UserInfo;
+use common::{ServerSentData, UserInfo};
 use log::{error, info};
 use std::time::Duration;
 use uuid::Uuid;
+
+//https://github.com/rishadbaniya/Actix-web-SPA-react-js-example/blob/master/src/main.rs
+pub async fn spa_index() -> ActixResult<actix_files::NamedFile> {
+    match actix_files::NamedFile::open("./dist/index.html") {
+        Ok(response) => Ok(response),
+        Err(e) => Err(ErrorInternalServerError(e.to_string())),
+    }
+}
 
 #[get("/api/hello")]
 async fn hello(
@@ -32,15 +40,16 @@ async fn get_user_info2(
     request: HttpRequest,
 ) -> ActixResult<web::Json<UserInfo>> {
     let mut user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    info!("{:#?}", user);
 
     // Get user assigned queue number if it exists
     // TODO: Should we store assigned queue number in the cookie as well? Probably not
-    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
-    let user_assigned_number = wrap_internal_server_error(database::get_user_assigned_queue(
-        db_connection,
-        &user.email,
-    ))?;
-    user.assigned_number = user_assigned_number;
+    // let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    // let user_assigned_number = wrap_internal_server_error(database::get_user_assigned_queue(
+    //     db_connection,
+    //     &user.email,
+    // ))?;
+    // user.assigned_number = user_assigned_number;
 
     Ok(web::Json(user))
 }
@@ -69,19 +78,23 @@ async fn token_exchange(
 
 /// if anonymous user that is not logged in, we generate a session with key "anonuser" with a uuid to track him.
 /// if he is already logged in?
-#[get("/public/trigger_login")]
+#[get("/public/{subapp}/trigger_login")]
 async fn login(
     app_state: web::Data<AppState>,
     session: Session,
+    info: web::Path<(String,)>,
     request: HttpRequest,
 ) -> ActixResult<HttpResponse> {
+    let subapp = info.into_inner().0;
+    let base_url = format!("/{}", subapp);
     // authorisation of public endpoints unnecessary? but good hygiene I guess
     is_authorised(&session, &app_state.authz_enforcer, request)?;
     // if user already logged in, we skip this flow
     if let Some(email) = session.get::<String>("user")? {
         if !email.is_empty() {
+            info!("User already logged in");
             return Ok(HttpResponse::TemporaryRedirect()
-                .insert_header(("Location", "/"))
+                .insert_header(("Location", base_url))
                 .body("Already logged in. Redirecting"));
         }
     }
@@ -100,18 +113,26 @@ async fn login(
         get_oidc_login(app_state.client_id.clone(), app_state.client_secret.clone()).await;
     let mut session_oidc_state = app_state.session_oidc_state.lock().await;
     // .expect("Expected to be able to lock mutex");
-    (*session_oidc_state).insert(anonuserid, (csrf_token, nonce));
+    let oidc_metadata = OidcMetadata {
+        csrf_token,
+        nonce,
+        subapp,
+    };
+    (*session_oidc_state).insert(anonuserid, oidc_metadata);
     Ok(HttpResponse::TemporaryRedirect()
         .insert_header(("Location", url.to_string()))
         .body("Redirecting to login"))
 }
 
-#[get("/api/trigger_logout")]
+#[get("/api/{subapp}/trigger_logout")]
 async fn logout(
     app_state: web::Data<AppState>,
     session: Session,
+    info: web::Path<(String,)>,
     request: HttpRequest,
 ) -> ActixResult<HttpResponse> {
+    let subapp = info.into_inner().0;
+    let base_url = format!("/{}", subapp);
     is_authorised(&session, &app_state.authz_enforcer, request)?;
     // if user already logged in, we clear his session token
     let user_key = "user";
@@ -120,7 +141,7 @@ async fn logout(
         session.clear();
     }
     Ok(HttpResponse::TemporaryRedirect()
-        .insert_header(("Location", "/"))
+        .insert_header(("Location", base_url))
         .body("Logged out. Redirecting"))
 }
 
@@ -130,15 +151,52 @@ async fn subscribe(
     session: Session,
     request: HttpRequest,
 ) -> impl Responder {
-    match is_authorised(&session, &app_state.authz_enforcer, request) {
-        Ok(_) => (),
+    let user = match is_authorised(&session, &app_state.authz_enforcer, request) {
+        Ok(x) => x,
         Err(e) => return Err(e),
-    }
+    };
     info!("Subscriber added");
     let (sender, receiver) = sse::channel(10);
     let mut sse_senders = app_state.sse_senders.lock().await;
-    (*sse_senders).push(sender);
+    let uuid = Uuid::new_v4().to_string();
+    let item = SseSender { sender, uuid };
+    if let Some(sender_list) = sse_senders.get(&user.email) {
+        let mut new_list = sender_list.clone();
+        new_list.push(item);
+        sse_senders.insert(user.email, new_list);
+    } else {
+        sse_senders.insert(user.email, vec![item]);
+    }
+    // (*sse_senders).push(sender);
     Ok(receiver.with_retry_duration(Duration::from_secs(10)))
+}
+
+#[get("/public/get_selected_number")]
+async fn get_selected_number(
+    app_state: web::Data<AppState>,
+    session: Session,
+    request: HttpRequest,
+) -> ActixResult<web::Json<ServerSentData>> {
+    let user = is_authorised(&session, &app_state.authz_enforcer, request)?;
+    let db_connection = &mut app_state.db_connection_pool.get().unwrap();
+    let selected_number = wrap_internal_server_error(database::get_selected_queue(db_connection))?;
+    let assigned_number = wrap_internal_server_error(database::get_user_assigned_queue(
+        db_connection,
+        &user.email,
+    ))?;
+    let (abandoned_numbers, done_numbers) = wrap_internal_server_error(
+        database::get_abandoned_and_processed(db_connection, &user.email),
+    )?;
+    Ok(web::Json(ServerSentData {
+        selected_number,
+        assigned_number,
+        abandoned_numbers,
+        done_numbers,
+    }))
+    // match selected_number {
+    //     Some(number) => Ok(number.to_string()),
+    //     None => Ok("None".to_string()),
+    // }
 }
 
 /// API to add new queue
