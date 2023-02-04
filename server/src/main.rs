@@ -5,9 +5,7 @@ use actix_web::{cookie::Key, web::to, web::Data, App, HttpServer};
 use actix_web_lab::sse;
 use anyhow::Result;
 use common::ServerSentData;
-use database::{
-    get_abandoned_and_processed, get_selected_queue, get_user_assigned_queue, QueueRow,
-};
+use database::{get_abandoned_and_processed, get_selected_queue, get_user_assigned_queue};
 use diesel::{
     r2d2::{ConnectionManager, Pool},
     SqliteConnection,
