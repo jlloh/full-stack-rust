@@ -2,6 +2,7 @@ mod abandon_confirmation_modal;
 mod panel;
 // use gloo_console::info;
 mod button;
+mod hero;
 mod navbar;
 mod tiles;
 
@@ -15,6 +16,7 @@ use gloo_console::log;
 use gloo_net::eventsource::futures::EventSource;
 use gloo_net::http::Request;
 use gloo_net::Error;
+use hero::Hero;
 use navbar::NavBar;
 use panel::Panel;
 use serde::de;
@@ -26,6 +28,8 @@ use sycamore_router::{HistoryIntegration, Route, Router};
 enum AppRoutes {
     #[to("/<subapp>")]
     SubApp(String),
+    #[to("/")]
+    Root,
     #[not_found]
     NotFound,
 }
@@ -38,7 +42,6 @@ fn main() {
         let assigned_number = create_signal(cx, None::<i32>);
         let should_display_abandon_modal = create_signal(cx, false);
         let selected_number = create_signal(cx, None::<i32>);
-        // let items = create_signal(cx, Vec::<i32>::new());
         let abandoned_numbers = create_signal(cx, Vec::<i32>::new());
         let done_numbers = create_signal(cx, Vec::<i32>::new());
         // Derived signals
@@ -135,9 +138,6 @@ fn main() {
                 integration=HistoryIntegration::new(),
                 view=move |cx, route: &ReadSignal<AppRoutes>| {
                     match route.get().as_ref() {
-                        AppRoutes::NotFound => {
-                            view! {cx, "Not Found"}
-                        }
                         AppRoutes::SubApp(subapp) => {
                             view! {
                                 cx,
@@ -162,6 +162,28 @@ fn main() {
                                 }
                             }
                         }
+                        AppRoutes::Root => {
+                            view! {
+                                cx,
+                                div(class="container is-widescreen"){
+                                    // TODO: Logout broken
+                                    NavBar(username=username, is_logged_in=is_logged_in, subapp="".to_string())
+                                    Hero(
+                                        title="Welcome to the queueing app".to_string(),
+                                        subtitle="Create new app or select existing app".to_string()
+                                    )
+                                    button(class="button is-info", disabled=true){"Create new"}
+                                    button(class="button is-success"){"Select existing"}
+                                    // TODO: Make this reactive. When they select existing, manifest a list of selectable apps
+                                    div(class="block"){
+                                        a(class="button", href="/demo", rel="external"){"Demo"}
+                                    }
+                                }
+                            }
+                        }
+                        AppRoutes::NotFound => {
+                            view! {cx, "Not Found"}
+                        }
                     }
                 }
             )
@@ -172,7 +194,3 @@ fn main() {
 async fn get_json_response<T: de::DeserializeOwned>(url: &str) -> Result<T, Error> {
     Request::get(url).send().await?.json::<T>().await
 }
-
-// async fn get_string_response(url: &str) -> Result<String, Error> {
-//     Request::get(url).send().await.unwrap().text().await
-// }
